@@ -1,0 +1,13 @@
+# MCP Flight Server Configuration
+PORT=8080
+
+# AviationStack API Configuration
+# Get free API key from: https://aviationstack.com/
+AVIATIONSTACK_API_KEY=your_aviationstack_api_key_here
+AVIATIONSTACK_BASE_URL=https://api.aviationstack.com/v1
+
+# FlightAPI.io Configuration (Optional)
+# Get API key from: https://flightapi.io/
+FLIGHTAPI_KEY=your_flightapi_key_here
+FLIGHTAPI_BASE_URL=https://api.flightapi.io
+

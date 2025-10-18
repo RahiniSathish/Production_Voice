@@ -1,0 +1,35 @@
+{
+  "name": "mcp-flight-server",
+  "version": "1.0.0",
+  "description": "MCP Flight Data Server for AI Travel Agent",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "node test_mcp_client.js"
+  },
+  "keywords": [
+    "mcp",
+    "flight",
+    "aviation",
+    "api",
+    "travel"
+  ],
+  "author": "Attar Travel",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

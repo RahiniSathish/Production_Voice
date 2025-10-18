@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Backend API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: travel-agent-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      - ./app/api:/app/app/api
+      - ./db:/app/db
+      - ./logs:/app/logs
+    command: python -m uvicorn app.api.api:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - travel-network
+
+  # Frontend (Streamlit)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: travel-agent-frontend
+    ports:
+      - "8506:8506"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      - ./app/frontend:/app/app/frontend
+      - ./logs:/app/logs
+    command: streamlit run app/frontend/app.py --server.headless=true --server.port=8506
+    depends_on:
+      - api
+    networks:
+      - travel-network
+
+  # LiveKit Agent
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: travel-agent-livekit
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      - ./agent:/app/agent
+      - ./logs:/app/logs
+    command: python agent/agent.py dev
+    depends_on:
+      - api
+    networks:
+      - travel-network
+
+  # MCP Flight Server (Node.js)
+  mcp-server:
+    image: node:18-slim
+    container_name: travel-agent-mcp
+    working_dir: /app
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./agent:/app
+    command: node index.js
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - travel-network
+
+  # Redis (optional - for caching)
+  redis:
+    image: redis:7-alpine
+    container_name: travel-agent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - travel-network
+
+networks:
+  travel-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+
