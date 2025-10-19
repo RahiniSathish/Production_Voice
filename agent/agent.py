@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 LiveKit Voice Agent with OpenAI Realtime API
 Real-time multilingual travel assistant for Saudi Arabia (Attar Travel)

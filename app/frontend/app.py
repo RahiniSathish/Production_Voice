@@ -13,6 +13,7 @@ from datetime import datetime, date, timedelta
 import time
 import threading
 import logging
+import base64, pathlib, streamlit as st
 try:
     import plotly.express as px
     import plotly.graph_objects as go
@@ -711,6 +712,43 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    .forgot-btn-wrapper > div > button {
+        max-width: 200px !important;
+        width: auto !important;
+        padding: 8px 16px !important;
+        font-size: 12px !important;
+        height: auto !important;
+    }
+    .navbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 50%;
+        height: 70px;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 0 2rem;
+        gap: 1.5rem;
+        z-index: 100;
+    }
+    .nav-button {
+        padding: 0.6rem 1.2rem;
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    }
+    .nav-button:hover {
+        color: #FFD700;
+        transform: translateY(-2px);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1187,7 +1225,7 @@ def test_password_validation(email, password):
         return {"error": str(e)}
 
 def login_screen():
-    """Customer login screen for realtime interface - Clean minimal design"""
+    """Customer login screen with airplane image on left, form on right"""
     # Hide sidebar during login
     st.markdown("""
         <style>
@@ -1196,106 +1234,37 @@ def login_screen():
         }
         .main .block-container {
             max-width: 100% !important;
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
+            padding: 0 !important;
         }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    # Main title and subtitle - center-aligned with clean theme
-    st.markdown("""
-        <div style="text-align: center; margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto;">
-            <h1 style="color: #1e40af; font-size: 1.8rem; font-weight: bold; margin: 0 0 0.5rem 0; line-height: 1.2;">
-                Attar Travel - Saudi Arabia Airlines & Travel Specialist
-            </h1>
-            <h3 style="color: #374151; font-size: 1.1rem; font-weight: normal; margin: 0;">
-                Enter Your Sign in Details →
-            </h3>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Check backend status and show warning
-    if not st.session_state.get('backend_status', False):
-        st.error("⚠️ Backend server is not running! Please start the backend server first.")
-        st.markdown("""
-            **To start the backend:**
-            1. Open a terminal
-            2. Navigate to: `AI Travel Agent/voice/backend/`
-            3. Run: `uvicorn travel_main:app --reload`
-            
-            Or use the provided script: `./start_all.sh`
-        """)
-        if st.button("🔄 Retry Connection"):
-            st.session_state.backend_status = check_backend_status()
-            st.session_state.backend_checked = True
-            st.rerun()
-        return
-    
-    # Login form with clean background
-    st.markdown("""
-        <style>
         .stApp {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%) !important;
+            background: white !important;
         }
-        
-        .stApp .main .block-container {
-            background-color: transparent !important;
-            padding: 1rem !important;
-            max-width: 100% !important;
+        .login-form-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            background: #f8f9fa;
+        }
+        .login-title {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #1e40af;
+            font-size: 2.5rem;
+            font-weight: bold;
         }
         .stForm {
-            background: rgba(255, 255, 255, 0.95) !important;
-            border: 2px solid rgba(255, 255, 255, 0.3) !important;
-            border-radius: 20px !important;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2), 0 5px 15px rgba(0, 0, 0, 0.1) !important;
-            backdrop-filter: blur(15px) !important;
-            -webkit-backdrop-filter: blur(15px) !important;
-            max-width: 500px !important;
-            margin-left: auto !important;
-            margin-right: auto !important;
-            padding: 2.5rem !important;
-            animation: formFloat 8s ease-in-out infinite !important;
-        }
-        
-        @keyframes formFloat {
-            0%, 100% {
-                transform: translateY(0px) scale(1);
-            }
-            50% {
-                transform: translateY(-8px) scale(1.02);
-            }
-        }
-        .stTextInput > div > div > input {
-            background-color: white !important;
-            border: 1px solid #e0e0e0 !important;
-            border-radius: 4px !important;
-            padding: 8px 12px !important;
-            font-size: 14px !important;
-            color: #333 !important;
-            height: 36px !important;
-        }
-        .stTextInput > div > div > input:focus {
-            border-color: #4a90e2 !important;
-            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2) !important;
-        }
-        
-        /* Password field error styling */
-        .stTextInput[data-testid="password_input"] > div > div > input {
-            transition: all 0.3s ease !important;
-        }
-        
-        .stTextInput[data-testid="password_input"] > div > div > input.error {
-            border-color: #ff4444 !important;
-            box-shadow: 0 0 0 2px rgba(255, 68, 68, 0.2) !important;
-            background-color: #fff5f5 !important;
-        }
-        .stTextInput label {
-            color: #333 !important;
-            font-weight: 500 !important;
-            font-size: 14px !important;
+            background: white !important;
+            border-radius: 12px !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+            padding: 2rem !important;
+            border: none !important;
+            max-width: 350px !important;
         }
         .stButton > button {
-            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%) !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
             color: white !important;
             border: none !important;
             border-radius: 8px !important;
@@ -1304,468 +1273,220 @@ def login_screen():
             font-size: 14px !important;
             width: 100% !important;
             height: 48px !important;
-            box-shadow: 0 4px 15px rgba(30, 64, 175, 0.3) !important;
-            transition: all 0.3s ease !important;
         }
-        .stButton > button:hover {
-            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%) !important;
-            transform: translateY(-2px) !important;
-            box-shadow: 0 6px 20px rgba(30, 64, 175, 0.4) !important;
+        .forgot-btn-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-top: 1rem;
+            max-width: 350px;
+            margin-left: auto;
+            margin-right: auto;
         }
-        
-        /* Button layout styling for login form */
-        .stForm .stButton {
-            margin-bottom: 0.5rem !important;
-        }
-        
-        /* Make all buttons in login form the same size */
-        .stForm .stButton > button {
-            height: 48px !important;
-            font-size: 14px !important;
-            padding: 12px 24px !important;
-            margin: 0 !important;
-        }
-        
-        /* Ensure both buttons are equal width */
-        .stForm .stButton {
-            width: 100% !important;
-        }
-        
-        /* Button focus and active states */
-        .stButton > button:focus {
-            outline: none !important;
-            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.3) !important;
-        }
-        
-        .stButton > button:active {
-            transform: translateY(1px) !important;
-            box-shadow: 0 2px 10px rgba(30, 64, 175, 0.3) !important;
-        }
-        
-        /* Style the forgot password button to look like a text link */
-        .stButton[data-testid="forgot_password_text_link"] {
-            background: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-        }
-        
-        .stButton[data-testid="forgot_password_text_link"] > button {
-            background: transparent !important;
-            background-color: transparent !important;
-            border: none !important;
-            color: #1e40af !important;
-            text-decoration: underline !important;
-            font-size: 14px !important;
-            font-weight: 500 !important;
-            padding: 8px 0 !important;
-            margin: 0 !important;
-            box-shadow: none !important;
-            text-align: center !important;
+        .forgot-btn-wrapper > div > button {
+            max-width: 200px !important;
             width: auto !important;
+            padding: 8px 16px !important;
+            font-size: 12px !important;
             height: auto !important;
-            min-height: auto !important;
-            border-radius: 0 !important;
-            outline: none !important;
         }
-        
-        .stButton[data-testid="forgot_password_text_link"] > button:hover {
-            background: transparent !important;
-            background-color: transparent !important;
-            color: #1d4ed8 !important;
-            text-decoration: none !important;
-            transform: none !important;
-            box-shadow: none !important;
-            border: none !important;
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 50%;
+            height: 70px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 0 2rem;
+            gap: 1.5rem;
+            z-index: 100;
         }
-        
-        .stButton[data-testid="forgot_password_text_link"] > button:focus {
-            background: transparent !important;
-            background-color: transparent !important;
-            color: #1d4ed8 !important;
-            text-decoration: none !important;
-            box-shadow: none !important;
-            border: none !important;
-            outline: none !important;
+        .nav-button {
+            padding: 0.6rem 1.2rem;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
         }
-        
-        .stButton[data-testid="forgot_password_text_link"] > button:active {
-            background: transparent !important;
-            background-color: transparent !important;
-            color: #1d4ed8 !important;
-            text-decoration: none !important;
-            transform: none !important;
-            box-shadow: none !important;
-            border: none !important;
+        .nav-button:hover {
+            color: #FFD700;
+            transform: translateY(-px);
         }
         </style>
     """, unsafe_allow_html=True)
     
-    # Initialize action state
-    if 'auth_action' not in st.session_state:
-        st.session_state.auth_action = None
+    # Add top navigation bar on the left side
+    st.markdown("""
+        <div class="navbar">
+            <a href="#about" class="nav-button">About Us</a>
+            <a href="#support" class="nav-button">Support</a>
+            <a href="#terms" class="nav-button">Terms of Use</a>
+            <a href="#privacy" class="nav-button">Privacy Policy</a>
+        </div>
+    """, unsafe_allow_html=True)
     
-    # Help text will be moved to bottom after buttons
+    # Check backend status
+    if not st.session_state.get('backend_status', False):
+        st.error("⚠️ Backend server is not running!")
+        if st.button("🔄 Retry Connection"):
+            st.session_state.backend_status = check_backend_status()
+            st.session_state.backend_checked = True
+            st.rerun()
+        return
+  
+    # Create two-column layout
+    col_left, col_right = st.columns([1, 1])
     
-    # Form layout with compact columns for labels and inputs
-    with st.form("login_form"):
-        # Email field
-        email_col1, email_col2 = st.columns([1, 2])
-        with email_col1:
-            st.markdown('<div style="display: flex; align-items: center; height: 36px; color: #333; font-weight: 500; font-size: 14px;">Email</div>', unsafe_allow_html=True)
-        with email_col2:
-            email = st.text_input("Email", placeholder="your.email@example.com", label_visibility="collapsed", key="email_input")
+    
+    with col_left:
+        st.markdown("""
+        <div style="background: url('https://t3.ftcdn.net/jpg/12/83/76/82/360_F_1283768231_VaDxNHO8FSAVruLtwfItbmvbLIx3gRo0.jpg') center/cover no-repeat;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    padding: 2rem;
+                    height: 100vh;
+                    width: 100%;
+                    position: fixed;
+                    left: 0;
+                    top: 0;
+                    text-align: center;">
+            <h2 style="color: white; font-size: 2rem; font-weight: bold; margin: 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.7);">
+            <h2 style="color: white; font-size: 2rem; font-weight: bold; margin: 0.5rem 0 0 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.7);">
+        </div>
+        """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col3:
+        st.markdown('<div class="login-title">Attar travels</div>', unsafe_allow_html=True)
+    
+        if 'auth_action' not in st.session_state:
+            st.session_state.auth_action = None
         
-        # Password field
-        pwd_col1, pwd_col2 = st.columns([1, 2])
-        with pwd_col1:
-            st.markdown('<div style="display: flex; align-items: center; height: 36px; color: #333; font-weight: 500; font-size: 14px;">Password</div>', unsafe_allow_html=True)
-        with pwd_col2:
-            password = st.text_input("Password", placeholder="Password", type="password", label_visibility="collapsed", key="password_input")
+        with st.form("login_form", border=False):
+            email = st.text_input("Email Address", placeholder="your.email@example.com", key="email_input")
+            password = st.text_input("Password", placeholder="Enter your password", type="password", key="password_input")
+            name = st.text_input("Full Name", placeholder="Full Name (New users only)", key="name_input")
             
-            # Clear password error flag when user starts typing
-            if password and st.session_state.get('password_error', False):
-                st.session_state.password_error = False
-        
-        # Name field
-        name_col1, name_col2 = st.columns([1, 2])
-        with name_col1:
-            st.markdown('<div style="display: flex; align-items: center; height: 36px; color: #333; font-weight: 500; font-size: 14px;">Full Name <span style="color: #999; font-size: 0.85em;">(New users)</span></div>', unsafe_allow_html=True)
-        with name_col2:
-            name = st.text_input("Name", placeholder="Full Name (New users only)", label_visibility="collapsed", key="name_input")
-        
-        # Add some spacing before buttons
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Two separate buttons - Sign In and Login
-        button_col1, gap, button_col2 = st.columns([1, 0.1, 1])
-        
-        with button_col1:
-            signin_button = st.form_submit_button("Sign In (New User)", use_container_width=True)
-        
-        with button_col2:
-            login_button = st.form_submit_button("Login", use_container_width=True)
-        
-        # Form submitted - process login/registration
+            button_col1, gap, button_col2 = st.columns([1, 0.1, 1])
+            
+            with button_col1:
+                signin_button = st.form_submit_button("Sign Up", use_container_width=True)
+            
+            with button_col2:
+                login_button = st.form_submit_button("Login", use_container_width=True)
         
         if signin_button or login_button:
-            # Determine action
             is_signin = signin_button
             
-            # Validation
             if not email:
                 st.error("❌ Please enter your email address")
-                logger.warning("Authentication attempt with empty email")
                 return
             
             if not password:
-                st.error("❌ **Password Required**")
-                st.warning("🔒 Please enter your password.")
-                logger.warning(f"Authentication attempt without password for: {email}")
+                st.error("❌ Please enter your password")
                 return
             
-            # Validate email format
             import re
             email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
             if not re.match(email_pattern, email):
                 st.error("❌ Please enter a valid email address")
-                logger.warning(f"Invalid email format: {email}")
                 return
             
-            # Password validation for Sign In (Registration)
             if is_signin:
-                # Check password requirements: at least 6 characters, special characters, numbers
                 has_special = bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password))
                 has_number = bool(re.search(r'\d', password))
                 has_min_length = len(password) >= 6
                 
                 if not has_min_length or not has_special or not has_number:
-                    st.warning("⚠️ **Password Requirements Not Met**")
-                    st.markdown("""
-                    <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
-                        <p style="margin: 0 0 0.5rem 0; color: #856404;"><strong>Password must contain:</strong></p>
-                        <ul style="margin: 0; color: #856404;">
-                            <li>✓ At least 6 characters</li>
-                            <li>✓ At least one number (0-9)</li>
-                            <li>✓ At least one special character (!@#$%^&*)</li>
-                        </ul>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    logger.warning(f"Sign In attempt with weak password for: {email}")
+                    st.warning("⚠️ Password Requirements Not Met")
+                    st.info("Password must: 6+ chars, have a number, have a special character")
                     return
                 
                 if not name:
-                    st.error("❌ Please enter your full name to register")
-                    logger.warning(f"Sign In attempt without name for: {email}")
+                    st.error("❌ Please enter your full name")
                     return
             
-            # For login, just check minimum password length
-            if not is_signin and len(password) < 3:
-                st.error("❌ **Password Too Short**")
-                st.warning("🔒 Password must be at least 3 characters long.")
-                logger.warning(f"Login attempt with very short password for: {email}")
-                return
-            
             try:
-                # Check if user exists first
-                check_response = requests.get(f"{BACKEND_URL}/check_customer/{email}", timeout=10)
-                user_exists = check_response.status_code == 200 and check_response.json().get('exists', False)
-                
                 if is_signin:
-                    # SIGN IN (REGISTRATION) MODE
-                    if user_exists:
-                        st.error("❌ This email is already registered. Please use Login button instead.")
-                        logger.warning(f"Sign In attempt with existing email: {email}")
-                        return
-                    
-                    # Register new user
-                    with st.spinner("Creating your account..."):
-                        response = requests.post(
-                            f"{BACKEND_URL}/register",
-                            json={"email": email, "password": password, "full_name": name},
-                            timeout=10
-                        )
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            st.session_state.customer_email = email
-                            st.session_state.customer_name = name
-                            st.session_state.customer_data = data.get('customer', {})
-                            st.session_state.logged_in = True
-                            
-                            # Show toast message for successful registration
-                            st.toast("✅ Successfully registered!")
-                            st.success(f"✅ Successfully registered! Welcome {name}!")
-                            
-                            logger.info(f"✅ New user registered: {email} - {name}")
-                            print(f"✅ INFO: New user registered: {email} - {name}")
-                            time.sleep(1)  # Brief pause to show the toast
-                            st.rerun()
-                        else:
-                            error_msg = response.json().get('detail', 'Registration failed. Please try again.')
-                            st.error(f"❌ Registration failed: {error_msg}")
-                            logger.error(f"Registration failed for {email}: {error_msg}")
+                    response = requests.post(
+                        f"{BACKEND_URL}/register",
+                        json={"email": email, "password": password, "name": name},
+                        timeout=10
+                    )
                 else:
-                    # LOGIN MODE
-                    if not user_exists:
-                        st.error("❌ This email is not registered. Please sign in first.")
-                        logger.warning(f"Login attempt with unregistered email: {email}")
-                        print(f"⚠️ WARNING: Login attempt with unregistered email: {email}")
-                        st.info("💡 Click 'Sign In (New User)' button to create an account")
-                        return
-                    
-                    # Login existing user
-                    with st.spinner("Logging in..."):
-                        print(f"🔐 Attempting login for: {email}")
-                        print(f"🔐 Password length: {len(password)} characters")
-                        response = requests.post(
-                            f"{BACKEND_URL}/login",
-                            json={"email": email, "password": password, "name": name or email.split('@')[0]},
-                            timeout=10
-                        )
-                        print(f"🔐 Login response status: {response.status_code}")
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            customer_data = data.get('customer', {})
-                            st.session_state.customer_email = email
-                            st.session_state.customer_name = customer_data.get('name', email.split('@')[0])
-                            st.session_state.customer_data = customer_data
-                            st.session_state.logged_in = True
-                            st.success(f"✅ Welcome back {st.session_state.customer_name}!")
-                            logger.info(f"✅ User logged in: {email}")
-                            print(f"✅ INFO: User logged in: {email}")
-                            st.rerun()
-                        elif response.status_code == 401:
-                            # Unauthorized - wrong password or no password set
-                            error_detail = response.json().get('detail', 'Invalid password')
-                            st.session_state.password_error = True  # Set error flag
-                            
-                            if "Password not set" in error_detail:
-                                st.error("❌ **Login Failed: Password Not Set**")
-                                st.warning("🔒 This account was created before password security was implemented.")
-                                st.info("💡 **Solution:** Please use 'Sign In (New User)' button with a new password to secure your account.")
-                            else:
-                                st.error("❌ **Login Failed: Incorrect Password**")
-                                st.warning("🔒 The password you entered is incorrect. Please check your password and try again.")
-                                st.info("💡 **Tips:**\n- Make sure Caps Lock is not enabled\n- Check for any typing errors\n- If you forgot your password, you may need to sign in again with 'Sign In (New User)' button")
-                            
-                            # Show a retry suggestion
-                            st.markdown("""
-                            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
-                                <p style="margin: 0; color: #856404;"><strong>🔄 Try Again:</strong></p>
-                                <ul style="margin: 0.5rem 0 0 0; color: #856404;">
-                                    <li>Double-check your password</li>
-                                    <li>Ensure Caps Lock is off</li>
-                                    <li>Try typing your password slowly</li>
-                                </ul>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            logger.warning(f"Login failed for {email}: Wrong password entered")
-                            print(f"⚠️ WARNING: Login failed for {email}: Wrong password entered")
-                        elif response.status_code == 404:
-                            # User not found
-                            st.error("❌ User not found. Please sign in first.")
-                            st.info("💡 Click 'Sign In (New User)' button to create an account")
-                            logger.warning(f"Login attempt for non-existent user: {email}")
-                            print(f"⚠️ WARNING: Login attempt for non-existent user: {email}")
-                        else:
-                            error_msg = response.json().get('detail', 'Login failed. Please try again.')
-                            st.error(f"❌ Login failed: {error_msg}")
-                            logger.error(f"Login failed for {email}: {error_msg}")
-                            print(f"❌ ERROR: Login failed for {email}: {error_msg}")
-                        
-            except requests.exceptions.ConnectionError:
-                st.error("❌ Cannot connect to server. The backend is not running.")
-                st.markdown("Please run: `python3 start_backend.py` from the backend directory")
-                st.session_state.backend_status = False
-                logger.error("Backend connection error")
-                print("❌ ERROR: Backend connection error")
-            except requests.exceptions.Timeout:
-                st.error("❌ Request timed out. Please try again.")
-                logger.error("Login request timeout")
+                    response = requests.post(
+                        f"{BACKEND_URL}/login",
+                        json={"email": email, "password": password},
+                        timeout=10
+                    )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    st.session_state.customer_email = email
+                    st.session_state.customer_name = data.get('name', name) if is_signin else data.get('name', email.split('@')[0])
+                    st.session_state.logged_in = True
+                    st.success("✅ Success!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    error_msg = response.json().get('detail', 'Authentication failed')
+                    st.error(f"❌ {error_msg}")
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
-                logger.error(f"Login/Registration error: {str(e)}")
-                print(f"❌ ERROR: Login/Registration error: {str(e)}")
-    
-    # Forgot Password - Centered below the login form
-    st.markdown("""
-    <div style="text-align: center; margin: 1rem 0;">
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("Forgot Password?", key="forgot_password_text_link", help="Click to reset password"):
-            st.session_state.show_forgot_password = True
-            st.rerun()
-    
-    st.markdown("""
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Forgot Password Section - Only show when button is clicked
-    if st.session_state.get('show_forgot_password', False):
-        st.markdown("---")
-        st.markdown("""
-        <div style="text-align: center; margin: 1rem 0;">
-            <h4 style="color: #1e40af; margin: 0;">🔐 Forgot Your Password?</h4>
-        </div>
-        """, unsafe_allow_html=True)
         
-        with st.form("forgot_password_form"):
-            forgot_email = st.text_input("Email Address", placeholder="Enter your registered email", key="forgot_email_input")
-            col1, col2, col3 = st.columns([1, 1, 1])
-            with col1:
-                forgot_submit = st.form_submit_button("Send Reset Link", use_container_width=True)
-            with col3:
-                if st.form_submit_button("Cancel", use_container_width=True):
-                    st.session_state.show_forgot_password = False
-                    st.rerun()
+        # Forgot password button - smaller width
+        # Center the forgot password button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("""
+                <style>
+                [data-testid="stButton"][key="forgot_btn"] > button {
+                    background-color: white !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            if st.button("Forgot Password?", key="forgot_btn", use_container_width=True):
+                st.session_state.show_forgot_password = True
+                st.rerun()
         
-        if forgot_submit:
-            if not forgot_email:
-                st.error("❌ Please enter your email address")
-            else:
-                # Validate email format
-                import re
-                email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-                if not re.match(email_pattern, forgot_email):
-                    st.error("❌ Please enter a valid email address")
-                else:
-                    try:
-                        # Check if user exists
-                        check_response = requests.get(f"{BACKEND_URL}/check_customer/{forgot_email}", timeout=10)
-                        user_exists = check_response.status_code == 200 and check_response.json().get('exists', False)
-                        
-                        if user_exists:
-                            # Send password reset email
-                            try:
-                                reset_response = requests.post(
-                                    f"{BACKEND_URL}/forgot_password",
-                                    json={"email": forgot_email},
-                                    timeout=10
-                                )
-                                
-                                if reset_response.status_code == 200:
-                                    response_data = reset_response.json()
-                                    if response_data.get('note'):
-                                        # SMTP not configured - show helpful message
-                                        st.warning("⚠️ Password reset email prepared but not sent")
-                                        st.info("📧 **Email system is ready but needs configuration.**")
-                                        st.markdown("""
-                                        **To enable email sending:**
-                                        1. Create a `.env` file in the backend directory
-                                        2. Add your email SMTP settings:
-                                           ```
-                                           SMTP_SERVER=smtp.gmail.com
-                                           SMTP_PORT=587
-                                           SMTP_USERNAME=your-email@gmail.com
-                                           SMTP_PASSWORD=your-app-password
-                                           SMTP_FROM_EMAIL=your-email@gmail.com
-                                           ```
-                                        3. Restart the backend server
-                                        
-                                        **Check the EMAIL_SETUP_INSTRUCTIONS.md file for detailed setup guide.**
-                                        """)
-                                        
-                                        # Show the reset token for testing
-                                        if 'reset_token' in response_data:
-                                            st.code(f"Reset Token: {response_data['reset_token']}")
-                                        
-                                        logger.info(f"✅ Password reset email prepared for: {forgot_email}")
-                                    else:
-                                        # Email was actually sent
-                                        st.success("✅ Password reset link sent to your email!")
-                                        st.info("📧 Please check your email and follow the instructions to reset your password.")
-                                        logger.info(f"✅ Password reset email sent to: {forgot_email}")
-                                    
-                                    # Hide the forgot password section after submission
-                                    st.session_state.show_forgot_password = False
-                                    st.rerun()
-                                else:
-                                    # Handle different error status codes
-                                    try:
-                                        error_data = reset_response.json()
-                                        error_msg = error_data.get('detail', 'Unknown error')
-                                        st.error(f"❌ {error_msg}")
-                                    except:
-                                        st.error(f"❌ Failed to send reset email. Server returned status {reset_response.status_code}")
-                                    logger.error(f"Failed to send password reset email to: {forgot_email}, Status: {reset_response.status_code}")
-                                    
-                            except requests.exceptions.RequestException as req_err:
-                                st.error("❌ Cannot connect to server. Please try again later.")
-                                logger.error(f"Request error during password reset: {req_err}")
-                            except Exception as reset_err:
-                                st.error(f"❌ Error: {str(reset_err)}")
-                                logger.error(f"Password reset error: {reset_err}")
-                        else:
-                            st.error("❌ This email is not registered with us.")
-                            st.info("💡 Please check your email address or sign up for a new account.")
-                            logger.warning(f"Password reset attempt for unregistered email: {forgot_email}")
-                            
-                    except requests.exceptions.ConnectionError:
-                        st.error("❌ Cannot connect to server. Please try again later.")
-                        logger.error("Backend connection error during password reset")
-                    except Exception as e:
-                        st.error(f"❌ Error: {str(e)}")
-                        logger.error(f"Password reset error: {str(e)}")
-    
-    # Instructions at the bottom - left aligned
-    st.markdown("""
-    <div style="text-align: left; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid #eee; max-width: 500px; margin-left: auto; margin-right: auto;">
-        <p style="color: #333; font-size: 13px; margin: 0 0 0.3rem 0; line-height: 1.3;"><strong>Instructions:</strong></p>
-        <ul style="color: #666; font-size: 12px; margin: 0; line-height: 1.3; padding-left: 1rem;">
-            <li><strong>New User:</strong> All fields required (Email, Password, Full Name)</li>
-            <li><strong>Existing User:</strong> Email & Password (Full Name optional)</li>
-            <li><strong>Password:</strong> 6+ chars, numbers & special chars</li>
-        </ul>
-        <p style="color: #666; font-size: 12px; margin: 0.5rem 0 0 0;">Need help? Contact support</p>
-    </div>
-    """, unsafe_allow_html=True)
+        # Show forgot password form if requested
+        if st.session_state.get('show_forgot_password', False):
+            st.markdown("---")
+            with st.form("forgot_password_form"):
+                forgot_email = st.text_input("Enter your email", key="forgot_email")
+                col1, col2 = st.columns(2)
+                with col1:
+                    forgot_submit = st.form_submit_button("Send Reset Link")
+                with col2:
+                    if st.form_submit_button("Cancel"):
+                        st.session_state.show_forgot_password = False
+                        st.rerun()
+            
+            if forgot_email and "forgot_submit" in locals():
+                try:
+                    response = requests.post(
+                        f"{BACKEND_URL}/forgot_password",
+                        json={"email": forgot_email},
+                        timeout=10
+                    )
+                    if response.status_code == 200:
+                        st.success("✅ Reset link sent to your email!")
+                        st.session_state.show_forgot_password = False
+                    else:
+                        st.error("❌ Email not found")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+
 
 def sidebar_navigation():
     """Create beautiful sidebar navigation with styled buttons"""
@@ -2022,38 +1743,40 @@ def show_voice_chat_interface():
     room_name = f"attar-travel-{uuid.uuid4().hex[:8]}"
     participant_name = str(customer_name).replace(' ', '_')
     
-    # Voice Chat Header
-    st.markdown("""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem; 
-                    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);">
-            <h1 style="color: white; margin: 0; font-size: 2rem; font-weight: 600; text-align: center;">
-                 Attar Travel AI Agent
-            </h1>
-            <p style="color: rgba(255,255,255,0.95); margin: 0.5rem 0 0 0; text-align: center; font-size: 1.1rem;">
-                Talk to our AI Travel Consultant about Saudi Arabia
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
+    # def img_b64(path):
+    #     return base64.b64encode(open(path, "rb").read()).decode()
+
+    # b64 = img_b64("public/TouristPlace.png") 
+    # # Voice Chat Header
+    # st.markdown(f"""
+    # <style>
+    # .hero {{
+    #   min-height: 220px;                     /* make it visible */
+    #   background-image: url("data:image/jpeg;base64,{b64}");
+    #   background-position: center;
+    #   background-size: cover;
+    #   background-repeat: no-repeat;
+    #   padding: 1rem;
+    #   border-radius: 8px;
+    #   margin-bottom: 1rem;
+    #   box-shadow: 0 4px 15px rgba(102,126,234,.2);
+    #   display:grid; place-items:center;
+    # }}
+    # .hero h1, .hero p {{ color: #fff; margin: 0; text-align:center; }}
+    # .hero p {{ opacity: .9; margin-top: .3rem; font-size: .9rem; }}
+    # </style>
+
+    # <div class="hero">
+    #   <div style="position: absolute; top: 1rem; left: 1rem;">
+    #     <h2 style="text-align: left;">          Attar Travel AI Agent</h2>
+    #     <p style="text-align: left;">Talk to our AI Travel Consultant about Saudi Arabia</p>
+    #   </div>
+    # </div>
+    # """, unsafe_allow_html=True)
     
     # Instructions
-    with st.expander("📖 How to use Voice Chat", expanded=True):
-        st.markdown("""
-        **Voice Chat is powered by LiveKit & OpenAI Realtime API**
-        
-        1. Click **"Connect & Start Talking"** button below
-        2. Allow microphone access when prompted by your browser
-        3. Start speaking naturally - the AI will respond in real-time
-        4. The AI can be interrupted at any time - just start speaking!
-        5. Ask about destinations, packages, bookings, or travel tips
-        
-        **Tips for best experience:**
-        - Use a headset or earphones to avoid echo
-        - Speak clearly and naturally
-        - The AI understands multiple languages
-        - You can interrupt the AI at any time
-        """)
-    
+    # Additional info
+   
     # LiveKit Voice Interface (HTML/JavaScript)
     livekit_html = """<!DOCTYPE html>
 <html>
@@ -2066,7 +1789,10 @@ def show_voice_chat_interface():
             margin: 0;
             padding: 20px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background-image: url('data:image/png;base64,{{background_image_b64}}');
+            background-position: center;
+            background-size: cover;
+            background-repeat: no-repeat;
         }}
         .voice-container {{
             max-width: 800px;
@@ -2728,7 +2454,26 @@ def show_voice_chat_interface():
     components.html(livekit_html_formatted, height=700, scrolling=True)
     
     # Additional info
-    st.info("""
+    
+    
+    with st.expander("📖 How to use Voice Chat", expanded=True):
+        st.markdown("""
+        **Voice Chat is powered by LiveKit & OpenAI Realtime API**
+        
+        1. Click **"Connect & Start Talking"** button below
+        2. Allow microphone access when prompted by your browser
+        3. Start speaking naturally - the AI will respond in real-time
+        4. The AI can be interrupted at any time - just start speaking!
+        5. Ask about destinations, packages, bookings, or travel tips
+        
+        **Tips for best experience:**
+        - Use a headset or earphones to avoid echo
+        - Speak clearly and naturally
+        - The AI understands multiple languages
+        - You can interrupt the AI at any time
+        """)
+        
+        st.info("""
     **💡 Note:** Voice Chat uses real-time AI conversation powered by OpenAI's Realtime API.
     The AI travel consultant can understand natural speech and respond immediately.
     """)
@@ -2738,17 +2483,34 @@ def show_dashboard_overview(email):
     """Show advanced dashboard overview with charts and analytics"""
     
     # Modern dashboard header
-    st.markdown("""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    padding: 1rem; border-radius: 8px; margin-bottom: 1rem; 
-                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);">
-            <h1 style="color: white; margin: 0; font-size: 1.8rem; font-weight: 600; text-align: center;">
-                Travel Analytics Dashboard
-            </h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 0.3rem 0 0 0; text-align: center; font-size: 0.9rem;">
-                Comprehensive travel insights and booking analytics
-            </p>
-        </div>
+    def img_b64(path):
+        return base64.b64encode(open(path, "rb").read()).decode()
+
+    b64 = img_b64("public/jumbo-jet-flying-sky_23-2150895699.jpg")  # adjust path
+
+    st.markdown(f"""
+    <style>
+    .hero {{
+      min-height: 220px;                     /* make it visible */
+      background-image: url("data:image/jpeg;base64,{b64}");
+      background-position: center;
+      background-size: cover;
+      background-repeat: no-repeat;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      box-shadow: 0 4px 15px rgba(102,126,234,.2);
+      display:grid; place-items:center;
+    }}
+    .hero h1, .hero p {{ color: #fff; margin: 0; text-align:center; }}
+    .hero p {{ opacity: .9; margin-top: .3rem; font-size: .9rem; }}
+    </style>
+
+    <div class="hero">
+      <div style="position: absolute; top: 1rem; left: 1rem;">
+        <h2 style="text-align: left;">Travel Analytics Dashboard</h2>
+      </div>
+    </div>
     """, unsafe_allow_html=True)
     
     # Get stats and booking data
@@ -2759,21 +2521,40 @@ def show_dashboard_overview(email):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
+        
+        IMG_PATH = "public/3d-rendering-flying-airplane-twilight-sky-background_493806-6084.jpg"
+        b64 = base64.b64encode(pathlib.Path(IMG_PATH).read_bytes()).decode()
+
+        W, H = 310, 218 # ← set to your image’s real size
         st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        padding: 0.8rem; border-radius: 8px; text-align: center; 
-                        box-shadow: 0 3px 10px rgba(102, 126, 234, 0.15); margin-bottom: 0.5rem;">
-                <h3 style="color: white; margin: 0; font-size: 0.8rem; opacity: 0.9;">Total Bookings</h3>
-                <h2 style="color: white; margin: 0.3rem 0; font-size: 1.8rem; font-weight: 600;">{stats['total_bookings']}</h2>
-                <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.7rem;">All time bookings</p>
-            </div>
+        <div style="width:{W}px;height:{H}px;
+                    background-image:
+                    url('data:image/jpeg;base64,{b64}');
+                    background-size: cover, auto;
+                    background-repeat: no-repeat, no-repeat;
+                    background-position: center, left top;
+                    padding: .8rem; border-radius: 8px; text-align: center;
+                    box-shadow: 0 3px 10px rgba(102,126,234,.15); margin-bottom:.5rem;">
+            <h3 style="color:white;margin:0;font-size:.8rem;opacity:.9;">Total Bookings</h3>
+            <h2 style="color:white;margin:.3rem 0;font-size:1.8rem;font-weight:600;">{stats['total_bookings']}</h2>
+            <p style="color:white;margin:0;font-size:.7rem;">All time bookings</p>
+        </div>
         """, unsafe_allow_html=True)
     
     with col2:
+        IMG_PATH = "public/3d-rendering-flying-airplane-twilight-sky-background_493806-6084.jpg"
+        b64 = base64.b64encode(pathlib.Path(IMG_PATH).read_bytes()).decode()
+
+        W, H = 310, 218  # ← set to your image’s real size
         st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                        padding: 0.8rem; border-radius: 8px; text-align: center; 
-                        box-shadow: 0 3px 10px rgba(240, 147, 251, 0.15); margin-bottom: 0.5rem;">
+        <div style="width:{W}px;height:{H}px;
+                    background-image:
+                    url('data:image/jpeg;base64,{b64}');
+                    background-size: cover, auto;
+                    background-repeat: no-repeat, no-repeat;
+                    background-position: center, left top;
+                    padding: .8rem; border-radius: 8px; text-align: center;
+                    box-shadow: 0 3px 10px rgba(102,126,234,.15); margin-bottom:.5rem;">
                 <h3 style="color: white; margin: 0; font-size: 0.8rem; opacity: 0.9;">Cancelled</h3>
                 <h2 style="color: white; margin: 0.3rem 0; font-size: 1.8rem; font-weight: 600;">{stats['cancelled_bookings']}</h2>
                 <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.7rem;">Cancelled bookings</p>
@@ -2781,10 +2562,19 @@ def show_dashboard_overview(email):
         """, unsafe_allow_html=True)
     
     with col3:
+        IMG_PATH = "public/3d-rendering-flying-airplane-twilight-sky-background_493806-6084.jpg"
+        b64 = base64.b64encode(pathlib.Path(IMG_PATH).read_bytes()).decode()
+
+        W, H = 310, 218  # ← set to your image’s real size
         st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); 
-                        padding: 0.8rem; border-radius: 8px; text-align: center; 
-                        box-shadow: 0 3px 10px rgba(79, 172, 254, 0.15); margin-bottom: 0.5rem;">
+        <div style="width:{W}px;height:{H}px;
+                    background-image:
+                    url('data:image/jpeg;base64,{b64}');
+                    background-size: cover, auto;
+                    background-repeat: no-repeat, no-repeat;
+                    background-position: center, left top;
+                    padding: .8rem; border-radius: 8px; text-align: center;
+                    box-shadow: 0 3px 10px rgba(102,126,234,.15); margin-bottom:.5rem;">
                 <h3 style="color: white; margin: 0; font-size: 0.8rem; opacity: 0.9;">Total Spent</h3>
                 <h2 style="color: white; margin: 0.3rem 0; font-size: 1.8rem; font-weight: 600;">₹{stats['total_spent']:,.0f}</h2>
                 <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.7rem;">Lifetime spending</p>
@@ -2792,10 +2582,19 @@ def show_dashboard_overview(email):
         """, unsafe_allow_html=True)
     
     with col4:
+        IMG_PATH = "public/3d-rendering-flying-airplane-twilight-sky-background_493806-6084.jpg"
+        b64 = base64.b64encode(pathlib.Path(IMG_PATH).read_bytes()).decode()
+
+        W, H = 310, 218  # ← set to your image’s real size
         st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                        padding: 0.8rem; border-radius: 8px; text-align: center; 
-                        box-shadow: 0 3px 10px rgba(250, 112, 154, 0.15); margin-bottom: 0.5rem;">
+        <div style="width:{W}px;height:{H}px;
+                    background-image:
+                    url('data:image/jpeg;base64,{b64}');
+                    background-size: cover, auto;
+                    background-repeat: no-repeat, no-repeat;
+                    background-position: center, left top;
+                    padding: .8rem; border-radius: 8px; text-align: center;
+                    box-shadow: 0 3px 10px rgba(102,126,234,.15); margin-bottom:.5rem;">
                 <h3 style="color: white; margin: 0; font-size: 0.8rem; opacity: 0.9;">Upcoming</h3>
                 <h2 style="color: white; margin: 0.3rem 0; font-size: 1.8rem; font-weight: 600;">{stats['upcoming_trips']}</h2>
                 <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.7rem;">Future trips</p>
