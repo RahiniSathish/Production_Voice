@@ -38,15 +38,14 @@ logger = logging.getLogger(__name__)
 
 # Check for password reset parameters in URL
 def check_reset_params():
-    """Check if we have password reset parameters in the URL"""
+    """Check if URL contains password reset parameters"""
     try:
-        # Get query parameters
         query_params = st.query_params
-        if 'token' in query_params and 'email' in query_params:
-            return query_params['token'], query_params['email']
+        token = query_params.get('token')
+        email = query_params.get('email')
+        return token, email
     except:
-        pass
-    return None, None
+        return None, None
 
 # Handle password reset form
 def show_password_reset_form(token, email):
@@ -1692,7 +1691,48 @@ def login_screen():
                                 
                                 if reset_response.status_code == 200:
                                     response_data = reset_response.json()
-                                    if response_data.get('note'):
+                                    
+                                    # Check if email was actually sent or if we have a reset link
+                                    if 'reset_link' in response_data and response_data['reset_link']:
+                                        # Email sending failed - show reset link directly
+                                        reset_link = response_data['reset_link']
+                                        
+                                        st.success("✅ Password reset link generated!")
+                                        st.warning("⚠️ Email delivery temporarily unavailable due to network restrictions.")
+                                        
+                                        st.markdown("""
+                                        <div style="background: #e3f2fd; border: 2px solid #2196f3; border-radius: 12px; padding: 1.5rem; margin: 1rem 0;">
+                                            <h3 style="color: #1565c0; margin-top: 0;">🔗 Password Reset Link</h3>
+                                            <p style="color: #0d47a1; margin-bottom: 1rem;">
+                                                Click the button below or copy the link to reset your password:
+                                            </p>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                        
+                                        # Show clickable link
+                                        st.markdown(f"""
+                                        <div style="text-align: center; margin: 1rem 0;">
+                                            <a href="{reset_link}" 
+                                               style="display: inline-block; background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+                                                      color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;
+                                                      font-weight: 600; font-size: 16px;">
+                                                🔐 Reset Password Now
+                                            </a>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                        
+                                        # Show copyable link
+                                        st.markdown("**Or copy this link:**")
+                                        st.code(reset_link, language=None)
+                                        
+                                        st.info("""
+                                        💡 **Note:** This link works exactly the same as an email link.
+                                        The link expires in 24 hours for security.
+                                        """)
+                                        
+                                        logger.info(f"✅ Password reset link shown in UI for: {forgot_email}")
+                                    
+                                    elif response_data.get('note'):
                                         # SMTP not configured - show helpful message
                                         st.warning("⚠️ Password reset email prepared but not sent")
                                         st.info("📧 **Email system is ready but needs configuration.**")
@@ -1723,9 +1763,10 @@ def login_screen():
                                         st.info("📧 Please check your email and follow the instructions to reset your password.")
                                         logger.info(f"✅ Password reset email sent to: {forgot_email}")
                                     
-                                    # Hide the forgot password section after submission
-                                    st.session_state.show_forgot_password = False
-                                    st.rerun()
+                                    # Don't auto-hide if we're showing the reset link
+                                    if 'reset_link' not in response_data or not response_data['reset_link']:
+                                        st.session_state.show_forgot_password = False
+                                        st.rerun()
                                 else:
                                     # Handle different error status codes
                                     try:
@@ -2301,6 +2342,7 @@ def show_voice_chat_interface():
             const participantName = '{participant_name}';
             const backendUrl = {backend_url_json};
             const customerEmail = {customer_email_json};
+            const customerName = {customer_name_json};
             let currentSessionId = null;
             let transcriptInterval = null;
             let lastTranscriptId = null;
@@ -2393,7 +2435,10 @@ def show_voice_chat_interface():
                 const payload = {{
                     roomName: roomName,
                     participantName: participantName,
-                    customerEmail: customerEmail || null
+                    customerEmail: customerEmail || null,
+                    metadata: {{
+                        customer_name: customerName || participantName
+                    }}
                 }};
 
                 if (currentSessionId) {{
@@ -2718,7 +2763,8 @@ def show_voice_chat_interface():
             room_name=room_name,
             participant_name=participant_name,
             backend_url_json=json.dumps(BACKEND_URL),
-            customer_email_json=json.dumps(customer_email)
+            customer_email_json=json.dumps(customer_email),
+            customer_name_json=json.dumps(customer_name)
         )
     except KeyError as e:
         st.error(f"Error formatting template: {str(e)}")

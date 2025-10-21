@@ -1,8 +1,0 @@
-streamlit
-requests
-audio-recorder-streamlit
-pygame
-python-dotenv
-plotly
-pandas
-numpy

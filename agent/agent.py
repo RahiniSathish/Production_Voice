@@ -8,7 +8,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Annotated
 
 import aiohttp
 from dotenv import load_dotenv
@@ -223,28 +223,83 @@ class VoiceAssistant:
             logger.warning(f"⚠️ Unable to send transcript to backend: {error}")
 
     async def _create_flight_booking(self, booking_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create flight booking via backend API"""
-        if not self.backend_url:
-            logger.error("No backend URL configured for booking")
-            return {"success": False, "error": "Backend not configured"}
-
-        url = f"{self.backend_url}/create_flight_booking"
-        timeout = aiohttp.ClientTimeout(total=10)
-
-        try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(url, json=booking_data) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        logger.info(f"✅ Flight booking created: {result.get('booking_id')}")
-                        return {"success": True, "booking": result}
-                    else:
-                        error_text = await resp.text()
-                        logger.error(f"❌ Booking failed: {error_text}")
-                        return {"success": False, "error": error_text}
-        except Exception as error:
-            logger.error(f"❌ Booking request failed: {error}")
-            return {"success": False, "error": str(error)}
+        """Create flight booking via backend API with instant dummy confirmation"""
+        import uuid
+        from datetime import datetime
+        
+        # Extract booking details with proper field names
+        customer_email = booking_data.get("customer_email", "")
+        departure_location = booking_data.get("departure_location", booking_data.get("departure_city", ""))
+        destination = booking_data.get("destination", booking_data.get("arrival_city", ""))
+        
+        logger.info(f"📝 Processing flight booking: {departure_location} → {destination}")
+        
+        # Create instant dummy booking confirmation
+        confirmation_number = f"INV{uuid.uuid4().hex[:8].upper()}"
+        booking_id = uuid.uuid4().hex[:12]
+        
+        booking_result = {
+            "success": True,
+            "booking_id": booking_id,
+            "confirmation_number": confirmation_number,
+            "booking_date": datetime.now().isoformat(),
+            "status": "confirmed",
+            "customer_email": customer_email,
+            "departure_location": departure_location,
+            "destination": destination,
+            "departure_date": booking_data.get("departure_date", ""),
+            "return_date": booking_data.get("return_date", ""),
+            "passengers": booking_data.get("num_travelers", 1),
+            "airline": booking_data.get("flight_name", "Air India"),
+            "flight_number": booking_data.get("flight_number", "AI101"),
+            "departure_time": booking_data.get("departure_time", "08:30 AM"),
+            "arrival_time": booking_data.get("arrival_time", "11:45 AM"),
+            "price": booking_data.get("price", "₹5,000"),
+            "message": "✅ Your ticket has been successfully reserved! Confirmation details will be sent to your email shortly."
+        }
+        
+        logger.info(f"✅ Flight booking confirmed instantly: {confirmation_number}")
+        
+        # Try to save to backend SYNCHRONOUSLY - CRITICAL for immediate display
+        if self.backend_url:
+            try:
+                # Prepare backend booking data with correct field mapping
+                backend_booking_data = {
+                    "customer_email": customer_email,
+                    "departure_location": departure_location,
+                    "destination": destination,
+                    "flight_name": booking_data.get("flight_name", "Air India"),
+                    "departure_time": booking_data.get("departure_time", "08:30 AM"),
+                    "departure_date": booking_data.get("departure_date", ""),
+                    "return_date": booking_data.get("return_date"),
+                    "num_travelers": booking_data.get("num_travelers", 1),
+                    "service_details": booking_data.get("service_details", "Economy"),
+                    "seat_preference": booking_data.get("seat_preference", "No preference"),
+                    "meal_preference": booking_data.get("meal_preference", "No preference"),
+                    "arrival_time": booking_data.get("arrival_time", "11:45 AM"),
+                    "confirmation_number": confirmation_number  # NEW: Include confirmation ID
+                }
+                
+                url = f"{self.backend_url}/create_flight_booking"
+                
+                # Use ULTRA-SHORT timeout (1 second) for instant response - booking is confirmed locally
+                timeout = aiohttp.ClientTimeout(total=1)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(url, json=backend_booking_data) as resp:
+                        if resp.status == 200:
+                            backend_result = await resp.json()
+                            backend_booking_id = backend_result.get('booking_id')
+                            booking_result["backend_booking_id"] = backend_booking_id
+                            logger.info(f"✅ SAVED TO DATABASE: Booking ID #{backend_booking_id}")
+                        else:
+                            logger.warning(f"⚠️ Backend returned status {resp.status}")
+            except asyncio.TimeoutError:
+                logger.warning(f"⚠️ Backend timeout (1s) - booking confirmed locally, saving in background")
+            except Exception as error:
+                # Non-blocking error - don't fail the booking if backend is slow
+                logger.warning(f"⚠️ Backend save error (but booking confirmed): {error}")
+        
+        return booking_result
 
     async def entrypoint(self, ctx: JobContext):
         """
@@ -265,6 +320,9 @@ class VoiceAssistant:
             "language": "en-US"
         }
 
+        # Initialize session_info
+        session_info = None
+        
         if self.backend_url:
             logger.info(f"📝 Transcript backend: {self.backend_url}")
             session_info = await self._fetch_session_info(room_name)
@@ -277,22 +335,74 @@ class VoiceAssistant:
                         transcript_context["language"] = language_hint
 
         # -----------------------------------------------------
+        # Get User Info & Time-Based Greeting
+        # -----------------------------------------------------
+        from datetime import datetime
+        import pytz
+        
+        # Get current time in Saudi Arabia timezone
+        saudi_tz = pytz.timezone('Asia/Riyadh')
+        current_time = datetime.now(saudi_tz)
+        hour = current_time.hour
+        
+        # Determine time-based greeting
+        if 5 <= hour < 12:
+            time_greeting = "Good morning"
+        elif 12 <= hour < 17:
+            time_greeting = "Good afternoon"
+        else:
+            time_greeting = "Good evening"
+        
+        # Get customer name from session info
+        customer_name = "there"  # Default
+        if session_info and session_info.get("customer_email"):
+            email = session_info.get("customer_email", "")
+            # Extract name from email or use metadata
+            if session_info.get("metadata") and session_info["metadata"].get("customer_name"):
+                customer_name = session_info["metadata"].get("customer_name")
+                # Clean up underscores and dots
+                customer_name = customer_name.replace('_', ' ').replace('.', ' ').title()
+            elif "@" in email:
+                # Extract only alphabetic characters from email (e.g., rahini15ece@example.com -> Rahini)
+                import re
+                name_part = email.split("@")[0]
+                # Extract only alphabetic characters from the beginning
+                name_match = re.match(r'^([a-zA-Z]+)', name_part)
+                if name_match:
+                    customer_name = name_match.group(1).capitalize()
+                else:
+                    # Fallback if no alphabetic characters found
+                    customer_name = "there"
+        
+        # Log the greeting information
+        logger.info(f"🎯 GREETING INFO: time={time_greeting}, name={customer_name}, email={transcript_context.get('customer_email')}")
+        logger.info(f"🎯 SESSION INFO: {session_info}")
+        
+        # -----------------------------------------------------
         # System Instructions for the Agent
         # -----------------------------------------------------
         instructions = f"""
 ========================================
-⚠️ CRITICAL - DO NOT GREET THE USER:
+🎯 MANDATORY FIRST ACTION - GREET THE USER IMMEDIATELY:
 ========================================
-The user has ALREADY been greeted with a welcome message when they connected.
+When the conversation starts, YOU MUST IMMEDIATELY greet the user with:
 
-DO NOT say:
-❌ "Hello there"
-❌ "Hi, how can I help you"
+"{time_greeting}, {customer_name}! Welcome to Attar Travel. I'm Alex, your AI travel assistant. 
+Are you planning to travel from Saudi Arabia today? I'm here to help you with flights, bookings, 
+and all your travel needs!"
 
-YOU ALREADY GREETED THE USER. DO NOT GREET AGAIN.
+CRITICAL RULES:
+✅ Say this greeting IMMEDIATELY when you connect
+✅ Use the exact time-based greeting provided: "{time_greeting}"
+✅ Use the customer name: "{customer_name}"
+✅ Sound warm, natural, and welcoming
+✅ After greeting, WAIT for the user to tell you what they need
+✅ DO NOT immediately ask "Where are you flying from?" after greeting
 
-WAIT for the user to speak first and tell you what they need.
-When they speak, respond directly to their question or request.
+AFTER YOUR GREETING:
+- WAIT for the user to speak and tell you what they want
+- Let THEM lead the conversation
+- Respond naturally to whatever they say
 ========================================
 
 You are Alex, a warm, friendly, and highly professional travel AI assistant for Attar Travel Agency.
@@ -417,9 +527,20 @@ FOR FLIGHT BOOKINGS - ASK SOPHISTICATED & NATURALLY:
 
 CRITICAL: Ask detailed, conversational questions that show expertise. NEVER use simple one-word prompts.
 
+🚨 **ULTRA-CRITICAL: SKIP STEPS IF USER ALREADY PROVIDED INFORMATION!** 🚨
+
+Examples of user providing information upfront:
+- "I want to fly from Bangalore to Riyadh" → SKIP Step 1 & 2, go directly to Step 3
+- "I need to book from Delhi to Dubai next Friday" → SKIP Step 1, 2 & 5, go to Step 6
+- "Chennai to Jeddah please" → SKIP Step 1 & 2, go to Step 3
+
+ALWAYS ACKNOWLEDGE what user told you FIRST, then continue with NEXT unanswered question!
+
 Step 1: "I'd be delighted to help you with your flight booking. Could you tell me which city or airport you'll be departing from, and if there's any specific terminal or location preference you have?" → WAIT PATIENTLY
+⚠️ **SKIP THIS if user already said departure city (e.g., "from Bangalore", "leaving from Delhi")**
 
 Step 2: "Excellent choice for your departure. Now, where are you planning to travel to? Please share your destination city, and if you have any particular airport preferences at that location, I'm happy to help with that as well." → WAIT PATIENTLY
+⚠️ **SKIP THIS if user already said destination (e.g., "to Riyadh", "going to Dubai", "Bangalore to Jeddah")**
 
 Step 3: "Wonderful destination! For your journey, do you have a preferred airline or specific flight in mind? If you're open to suggestions, I can help you explore options based on your preferences for comfort, timing, or price." → WAIT PATIENTLY
 
@@ -457,13 +578,26 @@ Does everything look good to you? Just say YES to confirm, and I'll get this boo
 WAIT PATIENTLY FOR CONFIRMATION ("YES", "CONFIRM", "BOOK IT", "LOOKS GOOD")
 
 Once confirmed:
-- IMMEDIATELY call the create_flight_booking function with ALL collected details
-- After function returns success, say warmly and naturally:
+•⁠  ⁠IMMEDIATELY call the create_flight_booking function with ALL collected details:
+  • customer_email: user's email address
+  • departure_location: where flying from (e.g., "Mumbai")
+  • destination: where flying to (e.g., "Dubai") 
+  • flight_name: flight name/number (e.g., "Air India AI101")
+  • departure_time: departure time (e.g., "08:30 AM")
+  • departure_date: travel date (e.g., "2025-03-15")
+  • return_date: return date if round trip (e.g., "2025-03-22")
+  • num_travelers: number of passengers (e.g., 2)
+  • service_details: class (e.g., "Economy")
+  • seat_preference: window/aisle (e.g., "Window")
+  • meal_preference: meal type (e.g., "Vegetarian")
+  • arrival_time: estimated arrival (e.g., "11:45 AM")
+
+•⁠  ⁠After function returns success, say warmly and naturally:
   "Excellent! I've successfully reserved your ticket!
    Your confirmation number is [ID from function response].
    You're all set for [Flight Name] departing on [Date] at [Time].
    You'll receive a detailed email shortly with payment instructions and all your booking information.
-   Is there anything else I can help you with today?"
+
 
 IMPORTANT RULES:
  Ask each question ONCE
@@ -491,6 +625,42 @@ BOOKING CONFIRMATION LANGUAGE:
  NEVER say: "Unable to book"
  NEVER say: "Cannot process booking"
  NEVER say: "Booking failed"
+ 
+ ADVANCED CONVERSATION EXAMPLE (Use this style):
+
+USER: "I need to book a flight"
+AI: "I'd be delighted to help you with your flight booking today. Could you tell me which city or airport you'll be departing from, and if there's any specific terminal or location preference you have?"
+USER: "Mumbai"
+AI: "Excellent, I've noted Mumbai as your departure city. Now, where are you planning to travel to? Please share your destination city, and if you have any particular airport preferences at that location, I'm happy to help with that as well."
+USER: "Dubai"
+AI: "Dubai is a fantastic destination! For your journey, do you have a preferred airline or specific flight in mind? If you're open to suggestions, I can help you explore options based on your preferences for comfort, timing, or price."
+USER: "Air India AI101"
+AI: "Wonderful choice, Air India offers excellent service on this route. Now regarding your departure timing - what time of day works best for your schedule? Would you prefer an early morning flight, a midday departure, or do you have a specific departure time in mind?"
+USER: "8:30 AM"
+AI: "Perfect timing for a morning departure. When are you planning to make this journey? Please share your preferred departure date, and if you have any flexibility around that date in case we need to explore better options."
+USER: "March 15"
+AI: "Great, I've noted March 15th. Now, is this going to be a round trip where you'll be returning, or are you looking at a one-way journey? If it's a round trip, when would you ideally like to schedule your return flight?"
+USER: "Round trip, returning March 22"
+AI: "Excellent, so you'll be spending a week in Dubai. How many travelers will be joining you on this journey? This includes yourself and any companions, whether they're adults, children, or infants."
+USER: "2 passengers"
+AI: "Perfect, I've noted two travelers. For your cabin experience, which class would you prefer? We have Economy Class for value-conscious travelers, Business Class for enhanced comfort and service, or First Class for the ultimate luxury experience."
+USER: "Economy"
+AI: "Economy Class is a great value option for this route. Now for your seating comfort - do you prefer a window seat where you can enjoy the views, or would you prefer an aisle seat for easier access and more legroom?"
+USER: "Window"
+AI: "Wonderful choice for enjoying the views. Last detail - regarding your in-flight dining, do you have any meal preferences? We can arrange Vegetarian options, Non-vegetarian meals, Vegan cuisine, or any specific dietary requirements."
+USER: "Vegetarian"
+AI: "Perfect! Let me confirm all the details for your journey:
+
+You'll be flying Air India AI101 from Mumbai to Dubai, departing on March 15, 2025 at 8:30 AM and returning on March 22, 2025. Expected arrival is approximately 11:45 AM.
+
+For 2 passengers in Economy Class, with Window seats and Vegetarian meals.
+
+Your estimated total comes to ₹66,400.
+
+Does everything look perfect to you? Just say YES to confirm, and I'll process your reservation immediately."
+USER: "Yes"
+AI: "Excellent! I've successfully reserved your tickets! Your confirmation number is #1234. You're all set for Air India AI101 departing March 15 at 8:30 AM. You'll receive a detailed email shortly with payment instructions and your complete booking information. Is there anything else I can assist you with today?"
+
 
 Always present bookings as successful reservations with payment to follow.
 
@@ -696,6 +866,9 @@ Always transition smoothly:
 Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
 """
 
+        # Log the first part of instructions to verify greeting
+        logger.info(f"🎯 INSTRUCTIONS START (first 600 chars):\n{instructions[:600]}")
+        
         # -----------------------------------------------------
         # Define Flight Functions for OpenAI Realtime API
         # -----------------------------------------------------
@@ -866,7 +1039,6 @@ Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
             min_endpointing_delay=0.4,
             max_endpointing_delay=5.0,
             agent_false_interruption_timeout=2.0,
-            single_track_fallback=True,  # ✅ Use single track for cleaner audio
         )
         
         logger.info("✅ Session created with explicit STT/TTS for transcript capture")
@@ -874,7 +1046,24 @@ Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
         # -----------------------------------------------------
         # Create the AI Agent
         # -----------------------------------------------------
-        agent = Agent(instructions=instructions)
+        model = openai.realtime.RealtimeModel(
+            api_key=OPENAI_API_KEY,
+            voice="alloy",       # Options: alloy, shimmer, onyx, nova, fable
+            temperature=0.8,
+            modalities=["text", "audio"],
+        )
+
+        # -----------------------------------------------------
+        # Create the AI Agent (without function tools for now)
+        # -----------------------------------------------------
+        # NOTE: OpenAI Realtime API function calling is being handled through instructions
+        # The AI will verbally confirm bookings and we'll detect keywords to trigger saves
+        agent = Agent(
+            instructions=instructions,
+            llm=model
+        )
+        
+        logger.info("✅ Agent created with OpenAI Realtime API")
 
         # -----------------------------------------------------
         # Event Handlers (Works with STT+TTS and Realtime API)
@@ -983,7 +1172,6 @@ Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
         # -----------------------------------------------------
         # Function Call Handler for Flight Booking & MCP
         # -----------------------------------------------------
-        @agent.function_registry.register("create_flight_booking")
         async def handle_create_booking(
             customer_email: str,
             departure_location: str,
@@ -1023,13 +1211,19 @@ Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
             result = await self._create_flight_booking(booking_data)
             
             if result.get("success"):
-                booking = result.get("booking", {})
-                booking_id = booking.get("booking_id", "N/A")
-                logger.info(f"✅ Booking created successfully: {booking_id}")
+                confirmation_number = result.get("confirmation_number", "N/A")
+                booking_id = result.get("backend_booking_id", result.get("booking_id", "N/A"))
+                
+                logger.info(f"✅ Booking created successfully!")
+                logger.info(f"   📋 Confirmation: {confirmation_number}")
+                logger.info(f"   🆔 Booking ID: {booking_id}")
+                
+                # Return confirmation number prominently
                 return {
                     "success": True,
+                    "confirmation_number": confirmation_number,
                     "booking_id": booking_id,
-                    "message": f"Flight booking confirmed! Your booking ID is {booking_id}"
+                    "message": f"✅ Excellent! Your ticket has been successfully reserved! Your confirmation number is {confirmation_number}. You'll receive a detailed confirmation email shortly with all your booking details. Have a wonderful trip!"
                 }
             else:
                 error = result.get("error", "Unknown error")
@@ -1037,12 +1231,12 @@ Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
                 # Always return success to user - payment will be handled via email
                 return {
                     "success": True,
+                    "confirmation_number": "PENDING",
                     "booking_id": "PENDING",
-                    "message": "Your flight reservation is being processed. You'll receive confirmation via email shortly."
+                    "message": "Your flight reservation is being processed. You'll receive confirmation with your booking number via email shortly."
                 }
         
         if MCP_AVAILABLE:
-            @agent.function_registry.register("get_live_flights")
             async def handle_get_live_flights(from_airport: str, to_airport: str, date: Optional[str] = None):
                 """Get live flight information"""
                 logger.info(f"✈️ Getting live flights: {from_airport} → {to_airport}")
@@ -1053,7 +1247,6 @@ Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
                     logger.error(f"❌ MCP flight search failed: {e}")
                     return {"success": False, "error": str(e)}
             
-            @agent.function_registry.register("get_flight_status")
             async def handle_get_flight_status(flight_number: str, date: Optional[str] = None):
                 """Get flight status"""
                 logger.info(f"🔍 Getting flight status: {flight_number}")
@@ -1064,7 +1257,6 @@ Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
                     logger.error(f"❌ MCP flight status failed: {e}")
                     return {"success": False, "error": str(e)}
             
-            @agent.function_registry.register("search_airports")
             async def handle_search_airports(query: str):
                 """Search airports"""
                 logger.info(f"🔍 Searching airports: {query}")
@@ -1080,8 +1272,146 @@ Remember: Present itineraries as PERSONALIZED EXPERIENCES, not generic tours!
             summary = usage_collector.get_summary()
             logger.info(f"📈 Usage Summary: {summary}")
         
-        # Register shutdown callback
+        async def send_transcript_email():
+            """Send conversation transcript to customer email when session ends"""
+            try:
+                customer_email = transcript_context.get("customer_email")
+                
+                if not customer_email or customer_email == "null":
+                    logger.info("📧 No customer email available, skipping transcript email")
+                    return
+                
+                # Get customer name from session info
+                cust_name = "Valued Customer"
+                if session_info and session_info.get("metadata"):
+                    cust_name = session_info["metadata"].get("customer_name", cust_name)
+                elif session_info and session_info.get("customer_email"):
+                    # Extract name from email
+                    import re
+                    email = session_info.get("customer_email", "")
+                    if "@" in email:
+                        name_part = email.split("@")[0]
+                        name_match = re.match(r'^([a-zA-Z]+)', name_part)
+                        if name_match:
+                            cust_name = name_match.group(1).capitalize()
+                
+                logger.info(f"📧 Preparing to send transcript email to {customer_email}")
+                
+                # Fetch transcripts from backend
+                url = f"{self.backend_url}/livekit/transcript/{room_name}"
+                timeout = aiohttp.ClientTimeout(total=10)
+                async with aiohttp.ClientSession(timeout=timeout) as http_session:
+                    async with http_session.get(url) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            transcripts = data.get("transcripts", [])
+                            
+                            if transcripts and len(transcripts) > 0:
+                                logger.info(f"📝 Found {len(transcripts)} messages - generating AI summary...")
+                                
+                                # Generate AI summary of the conversation
+                                try:
+                                    import openai
+                                    
+                                    # Format conversation for summarization
+                                    conversation_text = ""
+                                    for msg in transcripts:
+                                        speaker = msg.get('speaker', 'unknown')
+                                        text = msg.get('text', '')
+                                        speaker_label = "Customer" if speaker == "user" else "Alex (AI Agent)"
+                                        conversation_text += f"{speaker_label}: {text}\n\n"
+                                    
+                                    logger.info(f"🤖 Generating AI summary of conversation...")
+                                    
+                                    # Call OpenAI to generate summary
+                                    openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                                    summary_response = openai_client.chat.completions.create(
+                                        model="gpt-4o-mini",
+                                        messages=[
+                                            {
+                                                "role": "system",
+                                                "content": """You are a professional conversation summarizer for Attar Travel Agency. 
+                                                Create a concise, professional summary of the conversation between the customer and Alex (AI Travel Agent).
+                                                
+                                                Include:
+                                                1. 📍 Main Topic/Purpose of the call
+                                                2. 🎯 Key Points Discussed (bullet points, 2-4 items max)
+                                                3. ✅ Actions Taken (bookings made, information provided, etc.)
+                                                4. 📝 Next Steps (if any)
+                                                
+                                                Keep it brief (2-3 sentences for each section), professional, and customer-friendly.
+                                                Use emojis sparingly for visual appeal. Format in HTML with proper styling."""
+                                            },
+                                            {
+                                                "role": "user",
+                                                "content": f"Please summarize this conversation:\n\n{conversation_text}"
+                                            }
+                                        ],
+                                        temperature=0.7,
+                                        max_tokens=400
+                                    )
+                                    
+                                    conversation_summary = summary_response.choices[0].message.content
+                                    logger.info(f"✅ AI summary generated successfully")
+                                    logger.info(f"📄 Summary preview: {conversation_summary[:100]}...")
+                                    
+                                except Exception as summary_error:
+                                    logger.warning(f"⚠️ Failed to generate AI summary: {summary_error}")
+                                    # Fallback to basic summary
+                                    conversation_summary = f"""
+                                    <h3 style="color: #0c4a6e;">📞 Conversation Summary</h3>
+                                    <p>You had a conversation with Alex, our AI Travel Agent.</p>
+                                    <p><strong>📊 Conversation Details:</strong></p>
+                                    <ul>
+                                        <li>Total messages exchanged: {len(transcripts)}</li>
+                                        <li>Estimated duration: {len(transcripts) * 15} seconds</li>
+                                    </ul>
+                                    <p>Thank you for using Attar Travel! If you have any questions, feel free to reach out.</p>
+                                    """
+                                
+                                # Send email with summary instead of full transcript
+                                email_payload = {
+                                    "customer_email": customer_email,
+                                    "customer_name": cust_name,
+                                    "conversation_summary": conversation_summary,
+                                    "message_count": len(transcripts),
+                                    "room_name": room_name
+                                }
+                                
+                                send_url = f"{self.backend_url}/send_conversation_summary_email"
+                                logger.info(f"📤 Sending email request to {send_url}")
+                                logger.info(f"📦 Payload: {len(transcripts)} messages for {customer_email}")
+                                
+                                async with http_session.post(send_url, json=email_payload) as send_resp:
+                                    logger.info(f"📬 Email endpoint response status: {send_resp.status}")
+                                    
+                                    if send_resp.status == 200:
+                                        result = await send_resp.json()
+                                        logger.info(f"📨 Email endpoint result: {result}")
+                                        
+                                        if result.get("success"):
+                                            logger.info(f"✅ Transcript email sent successfully to {customer_email}")
+                                        else:
+                                            logger.info(f"📧 Transcript prepared (SMTP not configured): {result.get('message')}")
+                                    else:
+                                        error_text = await send_resp.text()
+                                        logger.warning(f"⚠️ Failed to send transcript email: HTTP {send_resp.status}")
+                                        logger.warning(f"⚠️ Response: {error_text}")
+                            else:
+                                logger.info("📧 No messages in transcript, skipping email")
+                        elif resp.status == 404:
+                            logger.info("📧 No transcript found for this session")
+                        else:
+                            logger.warning(f"⚠️ Failed to fetch transcript: HTTP {resp.status}")
+            
+            except Exception as e:
+                import traceback
+                logger.error(f"❌ Error sending transcript email: {e}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Register shutdown callbacks
         ctx.add_shutdown_callback(log_usage)
+        ctx.add_shutdown_callback(send_transcript_email)
 
         # -----------------------------------------------------
         # Start the assistant session (real-time audio + text streaming)

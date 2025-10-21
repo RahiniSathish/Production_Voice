@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from pathlib import Path
+import time
+from functools import lru_cache
 
 # Load environment variables from Production root
 env_path = Path(__file__).parent.parent / ".env"
@@ -72,7 +74,17 @@ class DirectFlightAPIClient:
             'User-Agent': 'AI-Travel-Agent-Flight-Client/1.0'
         })
         
+        # Add connection pooling for faster requests
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=10,
+            pool_maxsize=10,
+            max_retries=requests.adapters.Retry(total=2, backoff_factor=0.1)
+        )
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
+        
         self.use_api = bool(self.aviationstack_key or self.flightapi_key)
+        self._cache = {}  # Add simple caching
         
         if self.use_api:
             logger.info("✅ Flight API keys configured - will attempt real-time data")
@@ -82,6 +94,17 @@ class DirectFlightAPIClient:
     def health_check(self) -> bool:
         """Always return True - we have fallback data"""
         return True
+    
+    def _get_cache_key(self, from_airport: str, to_airport: str, date: Optional[str] = None) -> str:
+        """Generate cache key for flights"""
+        return f"flights_{from_airport}_{to_airport}_{date or 'any'}"
+    
+    def _is_cache_valid(self, cache_key: str, ttl_minutes: int = 30) -> bool:
+        """Check if cached data is still valid"""
+        if cache_key not in self._cache:
+            return False
+        cached_time, _ = self._cache[cache_key]
+        return (time.time() - cached_time) < (ttl_minutes * 60)
     
     def _get_airport_code(self, query: str) -> Optional[str]:
         """Convert city name or code to IATA code"""
@@ -103,125 +126,107 @@ class DirectFlightAPIClient:
         return query_upper  # Return as-is if not found
     
     def get_live_flights(self, from_airport: str, to_airport: str, date: Optional[str] = None) -> Dict[str, Any]:
-        """Get flight data with smart fallback"""
-        logger.info(f"✈️ Getting flights: {from_airport} → {to_airport}")
+        """Get live flights with faster timeout and caching"""
+        cache_key = self._get_cache_key(from_airport, to_airport, date)
+        
+        # Check cache first
+        if self._is_cache_valid(cache_key):
+            cached_time, cached_result = self._cache[cache_key]
+            logger.info(f"🚀 Using cached flights (age: {int(time.time() - cached_time)}s)")
+            return cached_result
         
         from_code = self._get_airport_code(from_airport)
         to_code = self._get_airport_code(to_airport)
         
-        # Try real API first if available
+        logger.info(f"✈️ Searching flights: {from_code} → {to_code}")
+        
+        # Try real API with SHORT timeout (2 seconds)
         if self.use_api and self.aviationstack_key:
             try:
-                api_result = self._try_aviationstack_api(from_code, to_code, date)
-                if api_result.get("success"):
-                    logger.info("✅ Using real-time API data")
-                    return api_result
-            except Exception as e:
-                logger.warning(f"⚠️ API failed, using fallback: {e}")
-        
-        # Use intelligent fallback
-        return self._get_fallback_flights(from_code, to_code, date)
-    
-    def _try_aviationstack_api(self, from_code: str, to_code: str, date: Optional[str]) -> Dict[str, Any]:
-        """Try to get real data from AviationStack"""
-        # Try flights endpoint (works on free tier)
-        url = f"{self.aviationstack_url}/flights"
-        params = {
-            "access_key": self.aviationstack_key,
-            "dep_iata": from_code,
-            "arr_iata": to_code,
-            "limit": 10
-        }
-        
-        if date:
-            params["flight_date"] = date
-        
-        response = self.session.get(url, params=params, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("data"):
-                flights = []
-                for flight_data in data["data"][:10]:
-                    airline = flight_data.get("airline", {})
-                    flight_info = flight_data.get("flight", {})
-                    departure = flight_data.get("departure", {})
-                    arrival = flight_data.get("arrival", {})
-                    
-                    flights.append({
-                        "airline": airline.get("name", "Unknown"),
-                        "flight_number": flight_info.get("iata", "N/A"),
-                        "departure": {
-                            "airport": departure.get("airport", from_code),
-                            "iata": from_code,
-                            "scheduled": departure.get("scheduled", "N/A"),
-                            "terminal": departure.get("terminal")
-                        },
-                        "arrival": {
-                            "airport": arrival.get("airport", to_code),
-                            "iata": to_code,
-                            "scheduled": arrival.get("scheduled", "N/A"),
-                            "terminal": arrival.get("terminal")
-                        },
-                        "status": flight_data.get("flight_status", "Scheduled")
-                    })
+                url = f"{self.aviationstack_url}/flights"
+                params = {
+                    "access_key": self.aviationstack_key,
+                    "dep_iata": from_code,
+                    "arr_iata": to_code,
+                }
                 
-                if flights:
-                    return {
-                        "success": True,
-                        "flights": flights,
-                        "route": f"{from_code} → {to_code}",
-                        "total_flights": len(flights),
-                        "source": "real_time_api"
-                    }
+                # FAST TIMEOUT: Only wait 2 seconds for API response
+                response = self.session.get(url, params=params, timeout=2)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    flights = data.get("data", [])
+                    if flights and len(flights) > 0:
+                        result = {
+                            "success": True,
+                            "flights": [
+                                {
+                                    "airline": f["airline"].get("name", "Unknown") if f.get("airline") else "Unknown",
+                                    "flight_number": f.get("flight", {}).get("iata", "N/A"),
+                                    "departure": f.get("departure", {}).get("scheduled", "N/A"),
+                                    "arrival": f.get("arrival", {}).get("scheduled", "N/A"),
+                                    "aircraft": f.get("aircraft", {}).get("iata", "N/A"),
+                                    "status": f.get("flight_status", "Scheduled"),
+                                    "source": "real_time_api"
+                                }
+                                for f in flights[:5]  # Limit to first 5
+                            ],
+                            "count": len(flights),
+                            "source": "real_time_api"
+                        }
+                        # Cache the result
+                        self._cache[cache_key] = (time.time(), result)
+                        logger.info(f"✅ Found {len(flights)} real-time flights from API")
+                        return result
+            except requests.Timeout:
+                logger.info(f"⏱️ API timeout (expected) - using fallback")
+            except Exception as e:
+                logger.warning(f"⚠️ API error: {e} - using fallback")
         
-        # API failed, return empty to trigger fallback
-        return {"success": False}
+        # Fallback to intelligent database (FAST - no API call)
+        result = self._get_fallback_flights(from_code, to_code, date)
+        # Cache the fallback result too
+        self._cache[cache_key] = (time.time(), result)
+        return result
     
     def _get_fallback_flights(self, from_code: str, to_code: str, date: Optional[str]) -> Dict[str, Any]:
-        """Intelligent fallback flight data"""
-        logger.info(f"📊 Using intelligent flight database for {from_code} → {to_code}")
+        """Get fallback flights from intelligent database (FAST)"""
+        logger.info(f"📊 Using intelligent fallback database")
         
-        # Check if route exists in popular routes
-        route_key = (from_code, to_code)
-        airlines = POPULAR_ROUTES.get(route_key, ["Air India", "Emirates", "IndiGo", "Saudia"])
+        # Check popular routes
+        if (from_code, to_code) in POPULAR_ROUTES:
+            airlines = POPULAR_ROUTES[(from_code, to_code)]
+        else:
+            airlines = ["Air India", "Emirates", "IndiGo"]
         
         flights = []
-        base_times = ["06:00 AM", "10:30 AM", "02:15 PM", "06:45 PM", "10:30 PM"]
+        base_hour = 6
         
-        for i, airline in enumerate(airlines[:5]):
-            departure_time = base_times[i % len(base_times)]
-            
-            # Calculate arrival time (assuming 3-5 hour flight)
+        for idx, airline in enumerate(airlines[:4]):  # Limit to 4 airlines
+            departure = f"{base_hour + (idx * 2):02d}:00"
+            arrival = f"{base_hour + (idx * 2) + 3:02d}:30"
             flights.append({
                 "airline": airline,
-                "flight_number": f"{airline[:2].upper()}{100 + i}",
-                "departure": {
-                    "airport": from_code,
-                    "iata": from_code,
-                    "scheduled": departure_time
-                },
-                "arrival": {
-                    "airport": to_code,
-                    "iata": to_code,
-                    "scheduled": "Multiple daily flights"
-                },
-                "status": "Regular Service"
+                "flight_number": f"{airline[:2].upper()}{(100 + idx):03d}",
+                "departure": f"{departure} AM",
+                "arrival": f"{arrival} AM",
+                "aircraft": "Boeing 787",
+                "status": "Scheduled",
+                "source": "fallback_database"
             })
         
         return {
             "success": True,
             "flights": flights,
-            "route": f"{from_code} → {to_code}",
-            "total_flights": len(flights),
-            "source": "flight_database"
+            "count": len(flights),
+            "source": "intelligent_fallback_database"
         }
     
     def get_flight_status(self, flight_number: str, date: Optional[str] = None) -> Dict[str, Any]:
-        """Get flight status with fallback"""
+        """Get flight status with fast timeout"""
         logger.info(f"🔍 Getting flight status: {flight_number}")
         
-        # Try real API
+        # Try real API (FAST timeout)
         if self.use_api and self.aviationstack_key:
             try:
                 url = f"{self.aviationstack_url}/flights"
@@ -230,12 +235,11 @@ class DirectFlightAPIClient:
                     "flight_iata": flight_number.upper()
                 }
                 
-                response = self.session.get(url, params=params, timeout=5)
+                response = self.session.get(url, params=params, timeout=2)  # 2 second timeout
                 if response.status_code == 200:
                     data = response.json()
                     flights = data.get("data", [])
                     if flights:
-                        # Process real data...
                         return {"success": True, "flight": flights[0], "source": "real_time_api"}
             except:
                 pass
@@ -245,16 +249,10 @@ class DirectFlightAPIClient:
             "success": True,
             "flight": {
                 "flight_number": flight_number.upper(),
-                "airline": "Multiple Airlines",
+                "airline": "Check airline website",
                 "status": "Scheduled",
-                "departure": {
-                    "airport": "See booking confirmation",
-                    "scheduled": "Check with airline"
-                },
-                "arrival": {
-                    "airport": "See booking confirmation",
-                    "scheduled": "Check with airline"
-                }
+                "departure": {"airport": "See confirmation", "scheduled": "Check with airline"},
+                "arrival": {"airport": "See confirmation", "scheduled": "Check with airline"}
             },
             "source": "fallback"
         }

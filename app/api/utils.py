@@ -185,8 +185,8 @@ def send_password_reset_email(customer_email, reset_token):
         
         subject = "🔐 Password Reset Request - Attar Travel"
         
-        # Create reset link (you can customize this URL)
-        reset_link = f"http://localhost:8506/reset-password?token={reset_token}&email={customer_email}"
+        # Create reset link for React frontend
+        reset_link = f"http://localhost:3001/reset-password?token={reset_token}&email={customer_email}"
         
         # HTML Email body with Attar Travel branding
         html_body = f"""
@@ -462,5 +462,148 @@ def send_conversation_transcript_email(customer_email, customer_name, transcript
         
     except Exception as e:
         logger.warning(f"⚠️ Transcript email notification failed: {e}")
+        return False
+
+
+def send_conversation_summary_email(customer_email, customer_name, conversation_summary, message_count, room_name):
+    """Send AI-generated conversation summary email to customer after call ends"""
+    try:
+        # Get SMTP settings from environment
+        smtp_server = os.getenv("SMTP_SERVER")
+        smtp_port = os.getenv("SMTP_PORT", "587")
+        smtp_username = os.getenv("SMTP_USERNAME")
+        smtp_password = os.getenv("SMTP_PASSWORD")
+        from_email = os.getenv("SMTP_FROM_EMAIL", smtp_username)
+        
+        subject = "📝 Your Conversation Summary - Attar Travel"
+        
+        # Build HTML email with the AI-generated summary
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+            
+            <!-- Main Header Card -->
+            <div style="background: white; margin: 40px auto; max-width: 700px; padding: 40px 30px; 
+                        border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h1 style="color: #1e40af; margin: 0; font-size: 2.2rem; font-weight: 700; 
+                                text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+                        ✈️ Attar Travel
+                    </h1>
+                    <p style="color: #6b7280; margin: 10px 0 0 0; font-size: 1.1rem; font-style: italic;">
+                        Your Journey, Our Passion
+                    </p>
+                </div>
+                
+                <div style="border-bottom: 3px solid #0ea5e9; margin: 25px 0;"></div>
+                
+                <h2 style="color: #0c4a6e; margin: 25px 0 20px 0; font-size: 1.7rem; text-align: center;">
+                    📝 Conversation Summary
+                </h2>
+                
+                <p style="color: #374151; font-size: 1.05rem; line-height: 1.7; margin-bottom: 25px;">
+                    Dear <strong>{customer_name}</strong>,
+                </p>
+                
+                <p style="color: #374151; font-size: 1.05rem; line-height: 1.7; margin-bottom: 30px;">
+                    Thank you for connecting with <strong>Alex</strong>, our AI Travel Agent! Here's a summary of your conversation:
+                </p>
+            </div>
+            
+            <!-- AI Summary Card -->
+            <div style="background: white; margin: 20px auto; max-width: 700px; padding: 35px; 
+                        border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); 
+                        border-left: 5px solid #8b5cf6;">
+                {conversation_summary}
+            </div>
+            
+            <!-- Stats Card -->
+            <div style="background: linear-gradient(135deg, #06b6d4 0%, #0ea5e9 100%); margin: 20px auto; 
+                        max-width: 700px; padding: 25px; border-radius: 16px; 
+                        box-shadow: 0 8px 24px rgba(14, 165, 233, 0.25); text-align: center;">
+                <p style="color: white; margin: 0; font-size: 1.1rem; font-weight: 600;">
+                    📊 <strong>{message_count}</strong> messages exchanged in this conversation
+                </p>
+            </div>
+            
+            <!-- Call to Action Card -->
+            <div style="background: white; margin: 30px auto; max-width: 700px; padding: 30px; 
+                        border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); 
+                        border-left: 5px solid #0ea5e9;">
+                <h4 style="color: #0c4a6e; margin: 0 0 15px 0; font-size: 1.3rem; display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.5rem;">📞</span> Need More Help?
+                </h4>
+                <p style="color: #0c4a6e; margin: 0; line-height: 1.7; font-size: 1rem;">
+                    Feel free to start a new conversation anytime! We're here <strong>24/7</strong> to help you plan your perfect journey to Saudi Arabia. 🌙✨
+                </p>
+            </div>
+            
+            <!-- Thank You Card -->
+            <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin: 20px auto; 
+                        max-width: 700px; padding: 30px; border-radius: 16px; 
+                        box-shadow: 0 8px 24px rgba(16, 185, 129, 0.25); text-align: center;">
+                <p style="font-size: 1.3rem; color: white; margin: 0 0 10px 0; font-weight: 600;">
+                    Thank you for choosing Attar Travel! 🙏
+                </p>
+                <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 1rem;">
+                    Your trusted partner for Saudi Arabia travel experiences
+                </p>
+            </div>
+            
+            <!-- Footer Card -->
+            <div style="background: white; margin: 20px auto 40px; max-width: 700px; padding: 30px; 
+                        border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); text-align: center;">
+                <div style="margin-bottom: 20px;">
+                    <span style="font-size: 2.5rem;">✈️</span>
+                </div>
+                <p style="margin: 0 0 8px 0; color: #1e40af; font-weight: bold; font-size: 1.2rem;">Safe Travels!</p>
+                <p style="margin: 0 0 5px 0; color: #6b7280; font-size: 1rem;">Alex & Attar Travel Team</p>
+                <p style="margin: 0; font-size: 0.9rem; color: #9ca3af;">Saudi Arabia Airlines & Travel Specialist</p>
+                <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; font-size: 0.85rem; color: #9ca3af;">
+                        © 2025 Attar Travel. All rights reserved.
+                    </p>
+                </div>
+            </div>
+            
+        </body>
+        </html>
+        """
+        
+        # If SMTP is configured, send email
+        if smtp_server and smtp_username and smtp_password:
+            try:
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = subject
+                msg['From'] = from_email
+                msg['To'] = customer_email
+                
+                msg.attach(MIMEText(html_body, 'html'))
+                
+                with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
+                    server.starttls()
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(msg)
+                
+                logger.info(f"📧 Conversation summary email SENT to {customer_email}")
+                return True
+                
+            except Exception as email_err:
+                logger.warning(f"⚠️ Summary email sending failed: {email_err}")
+                return False
+        else:
+            logger.info(f"📧 Conversation summary prepared for {customer_email}")
+            logger.info(f"   Messages summarized: {message_count}")
+            logger.info(f"   Room: {room_name}")
+            logger.info(f"   ⚠️ Email NOT sent - Configure SMTP in .env to enable")
+            return False
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Summary email notification failed: {e}")
         return False
 

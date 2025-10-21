@@ -59,11 +59,19 @@ def init_database():
             service_details TEXT,
             special_requests TEXT,
             total_amount REAL,
+            confirmation_number TEXT,
             status TEXT DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (customer_id) REFERENCES customers(id)
         )
     """)
+    
+    # Add confirmation_number column if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE travel_bookings ADD COLUMN confirmation_number TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
     
     # Conversation history table
     cursor.execute("""
@@ -154,7 +162,8 @@ def get_or_create_guest(email: str, name: str = None) -> Dict:
 
 def create_travel_booking(customer_email: str, service_type: str, destination: str, 
                          departure_date: str, return_date: str = None, num_travelers: int = 1, 
-                         service_details: str = None, special_requests: str = None, total_amount: float = 0) -> Dict:
+                         service_details: str = None, special_requests: str = None, total_amount: float = 0,
+                         confirmation_number: str = None) -> Dict:
     """Create a new travel booking"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -173,10 +182,10 @@ def create_travel_booking(customer_email: str, service_type: str, destination: s
     cursor.execute("""
         INSERT INTO travel_bookings 
         (customer_id, customer_email, service_type, destination, departure_date, return_date,
-         num_travelers, service_details, special_requests, total_amount, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
+         num_travelers, service_details, special_requests, total_amount, confirmation_number, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
     """, (customer_id, customer_email, service_type, destination, departure_date, return_date,
-          num_travelers, service_details, special_requests, total_amount, datetime.now()))
+          num_travelers, service_details, special_requests, total_amount, confirmation_number, datetime.now()))
     
     booking_id = cursor.lastrowid
     conn.commit()
@@ -184,6 +193,7 @@ def create_travel_booking(customer_email: str, service_type: str, destination: s
     
     return {
         'booking_id': booking_id,
+        'confirmation_number': confirmation_number,
         'customer_email': customer_email,
         'service_type': service_type,
         'destination': destination,
@@ -224,7 +234,7 @@ def get_customer_bookings(email: str) -> List[Dict]:
     
     cursor.execute("""
         SELECT id, service_type, destination, departure_date, return_date, num_travelers,
-               service_details, total_amount, status, created_at
+               service_details, total_amount, confirmation_number, status, created_at
         FROM travel_bookings
         WHERE customer_email = ?
         ORDER BY created_at DESC
@@ -241,8 +251,9 @@ def get_customer_bookings(email: str) -> List[Dict]:
             'num_travelers': row[5],
             'service_details': row[6],
             'total_amount': row[7],
-            'status': row[8],
-            'created_at': row[9]
+            'confirmation_number': row[8],
+            'status': row[9],
+            'created_at': row[10]
         })
     
     conn.close()

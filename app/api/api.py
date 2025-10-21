@@ -24,7 +24,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from config import DB_PATH, SERVICE_PRICES
 from models import VoiceRequest, CustomerLogin, CustomerRegister, TravelBookingRequest
-from utils import hash_password, verify_password, get_flight_class_options, send_booking_confirmation_email, send_password_reset_email, send_conversation_transcript_email
+from utils import hash_password, verify_password, get_flight_class_options, send_booking_confirmation_email, send_password_reset_email, send_conversation_transcript_email, send_conversation_summary_email
 
 # Configure logging FIRST (before any other imports that use logger)
 logging.basicConfig(level=logging.INFO)
@@ -459,19 +459,38 @@ def book_travel(booking: TravelBookingRequest):
 def create_flight_booking_endpoint(booking: dict):
     """Create a flight booking from voice agent"""
     try:
-        # Extract booking details
-        customer_email = booking.get("customer_email")
-        departure_location = booking.get("departure_location")
-        destination = booking.get("destination")
-        flight_name = booking.get("flight_name")
-        departure_time = booking.get("departure_time")
-        departure_date = booking.get("departure_date")
-        return_date = booking.get("return_date")
+        # Extract booking details with proper null handling
+        customer_email = booking.get("customer_email", "")
+        departure_location = booking.get("departure_location", "")
+        destination = booking.get("destination", "")
+        flight_name = booking.get("flight_name", "Air India")
+        departure_time = booking.get("departure_time", "")
+        departure_date = booking.get("departure_date", "")
+        return_date = booking.get("return_date") or None  # Convert empty string to None
         num_travelers = booking.get("num_travelers", 1)
         service_details = booking.get("service_details", "Economy")
         seat_preference = booking.get("seat_preference", "No preference")
         meal_preference = booking.get("meal_preference", "No preference")
         arrival_time = booking.get("arrival_time", "")
+        confirmation_number = booking.get("confirmation_number", "")  # NEW: Get confirmation from agent
+        
+        # Validate required fields
+        if not customer_email or not departure_location or not destination or not departure_date:
+            logger.error(f"❌ Missing required booking fields")
+            return {
+                "success": False,
+                "error": "Missing required fields: customer_email, departure_location, destination, departure_date",
+                "booking_id": "ERROR"
+            }
+        
+        logger.info(f"✈️  Creating flight booking:")
+        logger.info(f"   📧 Customer: {customer_email}")
+        logger.info(f"   🛫 Route: {departure_location} → {destination}")
+        logger.info(f"   ✈️  Flight: {flight_name}")
+        logger.info(f"   📅 Departure: {departure_date} at {departure_time}")
+        logger.info(f"   📅 Return: {return_date or 'N/A'}")
+        logger.info(f"   👥 Travelers: {num_travelers}")
+        logger.info(f"   📋 Confirmation: {confirmation_number}")
         
         # Calculate price based on class
         base_price = 10000  # Base economy price
@@ -481,18 +500,22 @@ def create_flight_booking_endpoint(booking: dict):
             base_price = 50000
         
         # Calculate duration
-        departure = datetime.strptime(departure_date, '%Y-%m-%d')
-        if return_date:
-            return_dt = datetime.strptime(return_date, '%Y-%m-%d')
-            duration = (return_dt - departure).days
-            if duration <= 0:
+        try:
+            departure = datetime.strptime(departure_date, '%Y-%m-%d')
+            if return_date:
+                return_dt = datetime.strptime(return_date, '%Y-%m-%d')
+                duration = (return_dt - departure).days
+                if duration <= 0:
+                    duration = 1
+            else:
                 duration = 1
-        else:
+        except (ValueError, TypeError) as date_error:
+            logger.warning(f"Date parsing error: {date_error}, using default duration=1")
             duration = 1
         
         total_amount = base_price * num_travelers * (1 if not return_date else 2)
         
-        # Create booking in database
+        # Create booking in database with confirmation number
         booking_data = create_travel_booking(
             customer_email=customer_email,
             service_type="Flight",
@@ -502,41 +525,47 @@ def create_flight_booking_endpoint(booking: dict):
             num_travelers=num_travelers,
             service_details=f"{flight_name} - {service_details} Class - {seat_preference} seat - {meal_preference} meal",
             special_requests=f"Departure: {departure_time}, Arrival: {arrival_time}",
-            total_amount=total_amount
+            total_amount=total_amount,
+            confirmation_number=confirmation_number  # NEW: Pass confirmation to DB
         )
         
-        logger.info(f"✈️  Flight booking created for {customer_email}")
-        logger.info(f"   🛫 Route: {departure_location} → {destination}")
-        logger.info(f"   ✈️  Flight: {flight_name}")
-        logger.info(f"   📅 Date: {departure_date} at {departure_time}")
-        logger.info(f"   👥 Travelers: {num_travelers}")
-        logger.info(f"   💺 Class: {service_details}")
-        logger.info(f"   🪑 Seat: {seat_preference}")
-        logger.info(f"   🍽️  Meal: {meal_preference}")
-        logger.info(f"   💵 Total: ₹{total_amount}")
-        logger.info(f"   🆔 Booking ID: #{booking_data['booking_id']}")
+        # Check if booking was created successfully
+        if "error" in booking_data:
+            logger.error(f"❌ Database error: {booking_data['error']}")
+            return {
+                "success": False,
+                "error": booking_data['error'],
+                "booking_id": "ERROR"
+            }
+        
+        booking_id = booking_data.get('booking_id')
+        
+        logger.info(f"✅ Flight booking SAVED to database")
+        logger.info(f"   🆔 Booking ID: #{booking_id}")
+        logger.info(f"   💵 Total Amount: ₹{total_amount}")
         
         # Send confirmation email
         try:
             send_booking_confirmation_email(customer_email, booking_data)
+            logger.info(f"✅ Confirmation email sent to {customer_email}")
         except Exception as email_error:
-            logger.warning(f"Email sending failed: {email_error}")
+            logger.warning(f"⚠️ Email sending failed: {email_error}")
         
         return {
             "success": True,
-            "booking_id": booking_data['booking_id'],
+            "booking_id": booking_id,
             "booking": booking_data,
             "total_amount": total_amount,
-            "message": f"Flight booking confirmed! Booking ID: #{booking_data['booking_id']}"
+            "message": f"✅ Flight booking confirmed! Booking ID: #{booking_id}. Check 'My Bookings' to view your reservation."
         }
         
     except Exception as e:
-        logger.error(f"❌ Flight booking error: {str(e)}")
+        logger.error(f"❌ Flight booking error: {str(e)}", exc_info=True)
         # Return success even on error (payment will be handled via email)
         return {
-            "success": True,
-            "booking_id": "PENDING",
-            "message": "Your flight reservation is being processed. You'll receive confirmation via email shortly.",
+            "success": False,
+            "booking_id": "ERROR",
+            "message": "Booking processing error. Please contact support.",
             "error": str(e)
         }
 
@@ -670,15 +699,38 @@ def forgot_password_endpoint(request: dict):
         if not customer:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Generate reset token (simple implementation - you can make this more secure)
+        # Generate reset token
         import secrets
-        import time
+        from datetime import datetime, timedelta
         reset_token = secrets.token_urlsafe(32)
         
-        # Store reset token with expiration (you might want to store this in database)
-        # For now, we'll just log it and send the email
+        # Store reset token with expiration (24 hours)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Add columns if they don't exist
+        try:
+            cursor.execute("ALTER TABLE customers ADD COLUMN reset_token TEXT")
+            cursor.execute("ALTER TABLE customers ADD COLUMN reset_token_expiry TIMESTAMP")
+            logger.info("✅ Added reset token columns to customers table")
+        except:
+            pass  # Columns already exist
+        
+        # Calculate expiry time (24 hours from now)
+        expiry_time = datetime.now() + timedelta(hours=24)
+        
+        # Update customer with reset token
+        cursor.execute("""
+            UPDATE customers 
+            SET reset_token = ?, reset_token_expiry = ?
+            WHERE email = ?
+        """, (reset_token, expiry_time.isoformat(), email))
+        
+        conn.commit()
+        conn.close()
+        
         logger.info(f"🔐 Password reset requested for: {email}")
-        logger.info(f"   Reset token: {reset_token}")
+        logger.info(f"   Reset token stored (expires: {expiry_time})")
         
         # Send password reset email
         email_sent = send_password_reset_email(email, reset_token)
@@ -697,7 +749,8 @@ def forgot_password_endpoint(request: dict):
                 "message": "Password reset email prepared (check logs for details)",
                 "email": email,
                 "note": "Configure SMTP settings to enable email sending",
-                "reset_token": reset_token  # Include token for debugging
+                "reset_token": reset_token,  # Include token for debugging
+                "reset_link": f"http://localhost:3001/reset-password?token={reset_token}&email={email}"
             }
             
     except HTTPException:
@@ -721,21 +774,52 @@ def reset_password_endpoint(request: dict):
         if len(new_password) < 6:
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
         
-        # Check if user exists
-        customer = get_or_create_customer(email)
-        if not customer:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # Update password in database
-        salt, hashed_password = hash_password(new_password)
-        
-        # Update customer password in database
+        # Check if user exists and validate token
         conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
+            SELECT reset_token, reset_token_expiry 
+            FROM customers 
+            WHERE email = ?
+        """, (email,))
+        
+        result = cursor.fetchone()
+        
+        if not result:
+            conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        stored_token, expiry = result
+        
+        # Validate token
+        if not stored_token or stored_token != token:
+            conn.close()
+            logger.warning(f"⚠️ Invalid reset token for: {email}")
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        
+        # Check if token is expired
+        if expiry:
+            from datetime import datetime
+            try:
+                expiry_dt = datetime.fromisoformat(expiry)
+                if datetime.now() > expiry_dt:
+                    conn.close()
+                    logger.warning(f"⚠️ Expired reset token for: {email}")
+                    raise HTTPException(status_code=400, detail="Reset token has expired. Please request a new one.")
+            except Exception as dt_error:
+                logger.warning(f"⚠️ Token expiry check error: {dt_error}")
+        
+        # Update password in database
+        salt, hashed_password = hash_password(new_password)
+        
+        # Update customer password and clear reset token
+        cursor.execute("""
             UPDATE customers 
-            SET password_salt = ?, password_hash = ? 
+            SET password_salt = ?, 
+                password_hash = ?, 
+                reset_token = NULL, 
+                reset_token_expiry = NULL 
             WHERE email = ?
         """, (salt, hashed_password, email))
         
@@ -812,6 +896,49 @@ def send_transcript_email(request: dict):
             
     except Exception as e:
         logger.error(f"❌ Error sending transcript email: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/send_conversation_summary_email")
+def send_conversation_summary_email_endpoint(request: dict):
+    """Send AI-generated conversation summary to customer email after call ends"""
+    try:
+        customer_email = request.get("customer_email")
+        customer_name = request.get("customer_name", "Valued Customer")
+        conversation_summary = request.get("conversation_summary", "")
+        message_count = request.get("message_count", 0)
+        room_name = request.get("room_name", "conversation")
+        
+        if not customer_email:
+            raise HTTPException(status_code=400, detail="Customer email is required")
+        
+        if not conversation_summary:
+            logger.warning(f"⚠️ No conversation summary to send for {customer_email}")
+            return {
+                "success": False,
+                "message": "No conversation summary available"
+            }
+        
+        # Send summary email
+        email_sent = send_conversation_summary_email(customer_email, customer_name, conversation_summary, message_count, room_name)
+        
+        if email_sent:
+            logger.info(f"✅ Conversation summary email sent successfully to {customer_email}")
+            return {
+                "success": True,
+                "message": f"Conversation summary sent to {customer_email}",
+                "message_count": message_count
+            }
+        else:
+            logger.info(f"📧 Summary prepared but email not sent (SMTP not configured)")
+            return {
+                "success": True,
+                "message": "Summary prepared (email sending disabled - configure SMTP)",
+                "message_count": message_count
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Error sending conversation summary email: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
