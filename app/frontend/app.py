@@ -1982,7 +1982,8 @@ def get_booking_analytics(email):
         'status_distribution': {},
         'monthly_spending': [],
         'top_destinations': [],
-        'recent_bookings': []
+        'recent_bookings': [],
+        'upcoming_bookings': []
     }
     
     try:
@@ -1998,11 +1999,13 @@ def get_booking_analytics(email):
                 monthly_totals = {}
                 destination_counts = {}
                 
+                today = datetime.now().date()
+
                 for booking in bookings:
                     # Count statuses
                     status = booking.get('status', 'pending')
                     status_counts[status] = status_counts.get(status, 0) + 1
-                    
+
                     # Monthly spending
                     try:
                         booking_date = datetime.strptime(booking.get('created_at', ''), '%Y-%m-%d %H:%M:%S.%f')
@@ -2015,7 +2018,7 @@ def get_booking_analytics(email):
                     # Destination counts
                     destination = booking.get('destination', 'Unknown')
                     destination_counts[destination] = destination_counts.get(destination, 0) + 1
-                    
+
                     # Recent bookings (last 3)
                     if len(analytics['recent_bookings']) < 3:
                         analytics['recent_bookings'].append({
@@ -2025,6 +2028,27 @@ def get_booking_analytics(email):
                             'status': status,
                             'amount': booking.get('total_amount', 0)
                         })
+
+                    # Upcoming bookings timeline data
+                    if status.lower() != 'cancelled':
+                        departure = booking.get('departure_date') or booking.get('travel_date')
+                        if departure:
+                            try:
+                                dep_date = datetime.strptime(departure, '%Y-%m-%d').date()
+                            except ValueError:
+                                try:
+                                    dep_date = datetime.strptime(departure, '%d-%m-%Y').date()
+                                except ValueError:
+                                    dep_date = None
+
+                            if dep_date and dep_date >= today:
+                                analytics['upcoming_bookings'].append({
+                                    'destination': destination,
+                                    'service_type': booking.get('service_type', 'Travel Service'),
+                                    'departure_date': dep_date,
+                                    'status': status,
+                                    'amount': booking.get('total_amount', 0)
+                                })
                 
                 analytics['status_distribution'] = status_counts
                 
@@ -2035,15 +2059,675 @@ def get_booking_analytics(email):
                 # Convert destination counts to list format
                 for dest, count in destination_counts.items():
                     analytics['top_destinations'].append({'destination': dest, 'count': count})
-                
+
                 # Sort by count
                 analytics['top_destinations'].sort(key=lambda x: x['count'], reverse=True)
                 analytics['monthly_spending'].sort(key=lambda x: x['month'])
-    
+                analytics['upcoming_bookings'].sort(key=lambda x: x['departure_date'])
+
     except Exception as e:
         logger.error(f"Error fetching analytics: {e}")
-    
+
     return analytics
+
+
+def inject_dashboard_styles():
+    """Inject custom CSS for the redesigned dashboard."""
+    if st.session_state.get('_dashboard_styles_loaded'):
+        return
+
+    st.markdown(
+        """
+        <style>
+            .dashboard-hero {
+                background: linear-gradient(120deg, #1e3a8a 0%, #312e81 50%, #0f172a 100%);
+                border-radius: 24px;
+                padding: 2.2rem 2.8rem;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+                gap: 2rem;
+                color: #f8fafc;
+                box-shadow: 0 25px 45px rgba(30, 58, 138, 0.35);
+                margin-bottom: 1.5rem;
+                position: relative;
+                overflow: hidden;
+            }
+
+            .dashboard-hero::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: radial-gradient(circle at 10% 20%, rgba(59,130,246,0.35) 0%, transparent 55%),
+                            radial-gradient(circle at 80% 10%, rgba(192,132,252,0.25) 0%, transparent 45%),
+                            radial-gradient(circle at 50% 80%, rgba(20,184,166,0.3) 0%, transparent 55%);
+                opacity: 0.9;
+                z-index: 0;
+            }
+
+            .dashboard-hero > * {
+                position: relative;
+                z-index: 1;
+            }
+
+            .dashboard-hero__eyebrow {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.45rem;
+                padding: 0.4rem 0.85rem;
+                border-radius: 999px;
+                background: rgba(148, 163, 184, 0.15);
+                backdrop-filter: blur(6px);
+                font-size: 0.8rem;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: rgba(226, 232, 240, 0.9);
+                margin-bottom: 1rem;
+            }
+
+            .dashboard-hero__headline {
+                font-size: 2.45rem;
+                line-height: 1.15;
+                font-weight: 700;
+                margin: 0 0 0.75rem 0;
+            }
+
+            .dashboard-hero__subhead {
+                font-size: 1.05rem;
+                color: rgba(226, 232, 240, 0.92);
+                max-width: 480px;
+                margin: 0;
+            }
+
+            .hero-metric-grid {
+                display: grid;
+                gap: 0.85rem;
+            }
+
+            .hero-metric-card {
+                background: rgba(15, 23, 42, 0.65);
+                border-radius: 18px;
+                padding: 1.1rem 1.25rem;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+            }
+
+            .hero-metric-card h3 {
+                font-size: 0.75rem;
+                font-weight: 600;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                color: rgba(226, 232, 240, 0.7);
+                margin: 0 0 0.4rem 0;
+            }
+
+            .hero-metric-card p {
+                font-size: 1.75rem;
+                font-weight: 700;
+                margin: 0;
+                color: #f8fafc;
+            }
+
+            .quick-action-card {
+                background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.9) 100%);
+                border: 1px solid rgba(15, 23, 42, 0.06);
+                border-radius: 18px;
+                padding: 1.1rem 1.3rem;
+                box-shadow: 0 15px 35px rgba(15, 23, 42, 0.08);
+                height: 100%;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+
+            .quick-action-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 25px 45px rgba(15, 23, 42, 0.12);
+            }
+
+            .quick-action-card h4 {
+                margin: 0 0 0.45rem 0;
+                font-size: 1.05rem;
+                font-weight: 600;
+                color: #0f172a;
+            }
+
+            .quick-action-card p {
+                margin: 0;
+                color: #475569;
+                font-size: 0.85rem;
+            }
+
+            .timeline-wrapper {
+                display: grid;
+                gap: 0.8rem;
+            }
+
+            .timeline-card {
+                display: grid;
+                grid-template-columns: 110px minmax(0, 1fr) auto;
+                gap: 1.2rem;
+                align-items: center;
+                padding: 1rem 1.25rem;
+                border-radius: 16px;
+                background: rgba(15, 23, 42, 0.03);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+            }
+
+            .timeline-card__date {
+                font-weight: 700;
+                color: #1e3a8a;
+                font-size: 0.95rem;
+            }
+
+            .timeline-card__title {
+                font-weight: 600;
+                margin: 0;
+                color: #0f172a;
+            }
+
+            .timeline-card__meta {
+                margin: 0.15rem 0 0 0;
+                color: #475569;
+                font-size: 0.85rem;
+            }
+
+            .insight-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.45rem;
+                padding: 0.45rem 0.8rem;
+                border-radius: 999px;
+                background: rgba(59, 130, 246, 0.1);
+                color: #1d4ed8;
+                font-size: 0.8rem;
+                font-weight: 600;
+            }
+
+            .travel-ideas-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 1rem;
+                margin-top: 0.5rem;
+            }
+
+            .travel-idea-card {
+                border-radius: 20px;
+                overflow: hidden;
+                border: 1px solid rgba(148, 163, 184, 0.25);
+                box-shadow: 0 15px 30px rgba(15, 23, 42, 0.08);
+                background: white;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .travel-idea-card__image {
+                height: 140px;
+                background-size: cover;
+                background-position: center;
+            }
+
+            .travel-idea-card__body {
+                padding: 1rem 1.1rem 1.2rem 1.1rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .travel-idea-card__title {
+                margin: 0;
+                font-size: 1rem;
+                font-weight: 600;
+                color: #0f172a;
+            }
+
+            .travel-idea-card__meta {
+                margin: 0;
+                font-size: 0.85rem;
+                color: #475569;
+                line-height: 1.4;
+            }
+
+            .travel-idea-card__tag {
+                align-self: flex-start;
+                padding: 0.35rem 0.7rem;
+                background: rgba(59, 130, 246, 0.12);
+                color: #1d4ed8;
+                border-radius: 999px;
+                font-size: 0.72rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.session_state['_dashboard_styles_loaded'] = True
+
+
+def render_dashboard_hero(stats):
+    """Render the hero section for the dashboard."""
+    customer_name = st.session_state.get('customer_name') or 'Explorer'
+    next_trip_label = (
+        "No upcoming trips planned"
+        if stats['upcoming_trips'] == 0
+        else f"{stats['upcoming_trips']} upcoming trip{'s' if stats['upcoming_trips'] != 1 else ''}"
+    )
+
+    st.markdown(
+        f"""
+        <div class="dashboard-hero">
+            <div>
+                <div class="dashboard-hero__eyebrow">
+                    ✨ Attar Travel Concierge • Saudi Arabia Specialists
+                </div>
+                <h1 class="dashboard-hero__headline">Welcome back, {customer_name}.</h1>
+                <p class="dashboard-hero__subhead">
+                    Your personal travel command center is ready. Track trips, explore premium experiences,
+                    and jump back into a live conversation with Alex whenever you need expert guidance.
+                </p>
+            </div>
+            <div class="hero-metric-grid">
+                <div class="hero-metric-card">
+                    <h3>Total Bookings Managed</h3>
+                    <p>{stats['total_bookings']}</p>
+                </div>
+                <div class="hero-metric-card">
+                    <h3>Lifetime Spend</h3>
+                    <p>₹{stats['total_spent']:,.0f}</p>
+                </div>
+                <div class="hero-metric-card">
+                    <h3>Trip Status</h3>
+                    <p>{next_trip_label}</p>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_dashboard_actions():
+    """Render quick action cards that switch between experiences."""
+    action_columns = st.columns(3)
+    actions = [
+        {
+            'title': 'Voice Concierge',
+            'icon': '🎧',
+            'description': 'Speak with Alex in real time powered by OpenAI Realtime + LiveKit.',
+            'callback': lambda: _set_view('voice_chat'),
+            'key': 'action_voice',
+        },
+        {
+            'title': 'Smart Chat',
+            'icon': '💬',
+            'description': 'Resume the guided text & voice assistant conversation loop.',
+            'callback': lambda: _set_view('conversation'),
+            'key': 'action_chat',
+        },
+        {
+            'title': 'Manage Bookings',
+            'icon': '🗂️',
+            'description': 'Review, reschedule, or cancel any of your upcoming travel plans.',
+            'callback': lambda: _set_view('bookings'),
+            'key': 'action_bookings',
+        },
+    ]
+
+    for column, action in zip(action_columns, actions):
+        with column:
+            st.markdown(
+                f"""
+                <div class="quick-action-card">
+                    <h4>{action['icon']} {action['title']}</h4>
+                    <p>{action['description']}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Open", key=f"{action['key']}_btn", use_container_width=True):
+                action['callback']()
+
+
+def _set_view(view: str):
+    """Helper to switch between core application views."""
+    if view == 'voice_chat':
+        st.session_state.current_view = 'voice_chat'
+        st.session_state.show_bookings = False
+        st.session_state.show_chat_history = False
+    elif view == 'conversation':
+        st.session_state.current_view = 'conversation'
+        st.session_state.show_bookings = False
+        st.session_state.show_chat_history = False
+    elif view == 'bookings':
+        st.session_state.current_view = 'conversation'
+        st.session_state.show_bookings = True
+        st.session_state.show_chat_history = False
+    st.rerun()
+
+
+def render_overview_summary(stats, bookings_data):
+    """Render overview metrics and upcoming travel timeline."""
+    col_metrics = st.columns(3)
+    col_metrics[0].metric("Trips curated", stats['total_bookings'])
+    col_metrics[1].metric("Active itineraries", stats['upcoming_trips'])
+    cancellation_rate = (
+        f"{(stats['cancelled_bookings'] / max(stats['total_bookings'] + stats['cancelled_bookings'], 1)) * 100:.0f}%"
+        if (stats['total_bookings'] + stats['cancelled_bookings'])
+        else "0%"
+    )
+    col_metrics[2].metric("Cancellation rate", cancellation_rate)
+
+    st.markdown("---")
+    st.markdown("#### ✈️ Upcoming journeys")
+
+    upcoming = bookings_data.get('upcoming_bookings', [])
+    if not upcoming:
+        st.info("No upcoming trips yet — start a new plan with Alex to get personalised itineraries.")
+        return
+
+    st.markdown('<div class="timeline-wrapper">', unsafe_allow_html=True)
+    for booking in upcoming[:4]:
+        formatted_date = booking['departure_date'].strftime('%d %b %Y')
+        st.markdown(
+            f"""
+            <div class="timeline-card">
+                <div class="timeline-card__date">{formatted_date}</div>
+                <div>
+                    <p class="timeline-card__title">{booking['service_type']} • {booking['destination']}</p>
+                    <p class="timeline-card__meta">Status: {booking['status'].title()} • Budget: ₹{booking['amount']:,.0f}</p>
+                </div>
+                <div class="insight-pill">On track</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_analytics_section(stats, bookings_data):
+    """Render analytics charts and insights."""
+    st.markdown("#### 📊 Performance insights")
+
+    col_charts = st.columns(2)
+
+    with col_charts[0]:
+        status_data = bookings_data.get('status_distribution', {})
+        st.markdown("**Booking status mix**")
+        if status_data and PLOTLY_AVAILABLE:
+            fig_pie = px.pie(
+                values=list(status_data.values()),
+                names=list(status_data.keys()),
+                color_discrete_sequence=['#1d4ed8', '#6366f1', '#4ade80', '#f97316'],
+                hole=0.5,
+            )
+            fig_pie.update_layout(showlegend=True, height=280, margin=dict(l=0, r=0, t=0, b=0))
+            st.plotly_chart(fig_pie, use_container_width=True)
+        elif status_data:
+            for status, count in status_data.items():
+                st.write(f"{status.title()}: {count}")
+        else:
+            st.info("No booking history available for status distribution yet.")
+
+    with col_charts[1]:
+        spending = bookings_data.get('monthly_spending', [])
+        st.markdown("**Monthly spend trend**")
+        if spending and PLOTLY_AVAILABLE:
+            df_spending = pd.DataFrame(spending)
+            fig_line = px.line(
+                df_spending,
+                x='month',
+                y='amount',
+                markers=True,
+                color_discrete_sequence=['#0ea5e9'],
+            )
+            fig_line.update_layout(
+                height=280,
+                margin=dict(l=0, r=0, t=0, b=0),
+                xaxis_title="",
+                yaxis_title="₹",
+            )
+            fig_line.update_traces(line=dict(width=3), marker=dict(size=9))
+            st.plotly_chart(fig_line, use_container_width=True)
+        elif spending:
+            for month_data in spending:
+                st.write(f"{month_data['month']}: ₹{month_data['amount']:,.0f}")
+        else:
+            st.info("No spending trend data yet. Complete bookings to unlock insights.")
+
+    st.markdown("---")
+    st.markdown("#### 🔍 Concierge notes")
+
+    avg_booking_value = stats['total_spent'] / max(stats['total_bookings'], 1) if stats['total_bookings'] else 0
+    success_rate = (
+        ((stats['total_bookings'] - stats['cancelled_bookings']) / max(stats['total_bookings'], 1)) * 100
+        if stats['total_bookings']
+        else 0
+    )
+
+    insights = [
+        f"Average booking value: ₹{avg_booking_value:,.0f}",
+        f"Success rate: {success_rate:.1f}%",
+        f"Confirmed journeys: {stats['total_bookings'] - stats['cancelled_bookings']}",
+        "Ask Alex for a bespoke Umrah or leisure itinerary in under 2 minutes",
+    ]
+
+    for insight in insights:
+        st.markdown(f"- {insight}")
+
+
+def render_booking_cards(email):
+    """Render interactive booking cards with management controls."""
+    st.markdown("#### 🗂️ Travel portfolio")
+
+    try:
+        response = requests.get(f"{BACKEND_URL}/my_bookings/{email}", timeout=10)
+    except Exception as exc:
+        st.error(f"Unable to load bookings: {exc}")
+        return
+
+    if response.status_code != 200:
+        st.error(f"Failed to load bookings (status {response.status_code})")
+        return
+
+    bookings = response.json().get('bookings', [])
+    if not bookings:
+        st.info("You have not confirmed any travel experiences yet.")
+        st.write("Launch the voice concierge or chat to start planning your first trip.")
+        return
+
+    st.success(f"{len(bookings)} travel experience{'s' if len(bookings) != 1 else ''} found")
+
+    for idx, booking in enumerate(bookings, 1):
+        booking_id = booking.get('booking_id', idx)
+        booking_status = booking.get('status', 'pending').lower()
+        status_color = (
+            '#16a34a' if booking_status == 'confirmed'
+            else '#f59e0b' if booking_status == 'pending'
+            else '#dc2626'
+        )
+
+        service_details = booking.get('service_details', '')
+        special_requests = booking.get('special_requests', '')
+
+        st.markdown(
+            f"""
+            <div style="background: white; border-radius: 16px; padding: 1.2rem 1.4rem; margin-bottom: 1rem;
+                        border: 1px solid rgba(15,23,42,0.08); box-shadow: 0 20px 35px rgba(15,23,42,0.06);">
+                <div style="display: flex; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap;">
+                    <div>
+                        <h4 style="margin: 0; font-size: 1.15rem; color: #0f172a;">{booking.get('service_type', 'Travel Service')}</h4>
+                        <p style="margin: 0.2rem 0; color: #475569;">{booking.get('destination', 'Destination TBD')}</p>
+                        <p style="margin: 0.2rem 0; color: #475569;">Departure: {booking.get('departure_date', 'TBC')} | Return: {booking.get('return_date', 'TBC')}</p>
+                        <p style="margin: 0.4rem 0 0 0; color: #0f172a; font-weight: 600;">₹{booking.get('total_amount', 0):,.0f}</p>
+                    </div>
+                    <div style="text-align: right; min-width: 160px;">
+                        <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.75rem;
+                                     border-radius: 999px; background: rgba(15,23,42,0.05); color: {status_color}; font-weight: 600;">
+                            Status: {booking.get('status', 'pending').title()}
+                        </span>
+                        <p style="margin: 0.45rem 0 0 0; color: #64748b; font-size: 0.8rem;">Booked on: {booking.get('created_at', 'N/A')[:10]}</p>
+                        <p style="margin: 0.2rem 0 0 0; color: #64748b; font-size: 0.8rem;">Travelers: {booking.get('num_travelers', 1)}</p>
+                    </div>
+                </div>
+                {f'<p style="margin: 0.8rem 0 0 0; color: #475569;">{service_details}</p>' if service_details else ''}
+                {f'<p style="margin: 0.4rem 0 0 0; color: #475569; font-style: italic;">Special requests: {special_requests}</p>' if special_requests else ''}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if booking_status == 'cancelled':
+            continue
+
+        col_cancel, col_reschedule, col_delete = st.columns(3)
+
+        if col_cancel.button("Cancel", key=f"dash_cancel_{booking_id}", use_container_width=True):
+            _cancel_booking(booking_id, email)
+
+        if col_reschedule.button("Reschedule", key=f"dash_reschedule_{booking_id}", use_container_width=True):
+            st.session_state[f"show_dash_reschedule_{booking_id}"] = True
+            st.rerun()
+
+        if col_delete.button("Delete", key=f"dash_delete_{booking_id}", use_container_width=True):
+            st.session_state[f"show_dash_delete_confirm_{booking_id}"] = True
+            st.rerun()
+
+        if st.session_state.get(f"show_dash_delete_confirm_{booking_id}"):
+            st.warning("Are you sure you want to permanently remove this booking?")
+            col_confirm, col_abort = st.columns(2)
+            if col_confirm.button("Yes, delete", key=f"dash_confirm_delete_{booking_id}", use_container_width=True):
+                _delete_booking(booking_id)
+            if col_abort.button("No, keep it", key=f"dash_abort_delete_{booking_id}", use_container_width=True):
+                st.session_state[f"show_dash_delete_confirm_{booking_id}"] = False
+                st.rerun()
+
+        if st.session_state.get(f"show_dash_reschedule_{booking_id}"):
+            _render_reschedule_form(booking, booking_id, email)
+
+
+def _cancel_booking(booking_id, customer_email):
+    try:
+        response = requests.post(
+            f"{BACKEND_URL}/cancel_booking",
+            json={"booking_id": booking_id, "customer_email": customer_email},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            st.success("Booking cancelled successfully.")
+            st.session_state[f"show_dash_delete_confirm_{booking_id}"] = False
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.error("Unable to cancel booking.")
+    except Exception as exc:
+        st.error(f"Error cancelling booking: {exc}")
+
+
+def _delete_booking(booking_id):
+    try:
+        response = requests.post(f"{BACKEND_URL}/cancel_booking/{booking_id}", timeout=10)
+        if response.status_code == 200:
+            st.success("Booking removed.")
+            st.session_state[f"show_dash_delete_confirm_{booking_id}"] = False
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.error("Unable to delete booking at this time.")
+    except Exception as exc:
+        st.error(f"Error deleting booking: {exc}")
+
+
+def _render_reschedule_form(booking, booking_id, email):
+    st.markdown("---")
+    st.markdown("###### Reschedule booking")
+    try:
+        current_dep = datetime.strptime(booking.get('departure_date', ''), '%Y-%m-%d').date()
+    except Exception:
+        current_dep = datetime.now().date()
+
+    default_return = booking.get('return_date')
+    if default_return:
+        try:
+            current_ret = datetime.strptime(default_return, '%Y-%m-%d').date()
+        except Exception:
+            current_ret = None
+    else:
+        current_ret = None
+
+    with st.form(f"dash_reschedule_form_{booking_id}"):
+        new_departure = st.date_input("New departure", value=current_dep, key=f"dash_new_dep_{booking_id}")
+        new_return = st.date_input(
+            "New return",
+            value=current_ret,
+            key=f"dash_new_ret_{booking_id}",
+        )
+
+        col_submit, col_cancel = st.columns(2)
+        with col_submit:
+            if st.form_submit_button("Update itinerary", use_container_width=True):
+                try:
+                    response = requests.post(
+                        f"{BACKEND_URL}/reschedule_booking",
+                        json={
+                            "booking_id": booking_id,
+                            "customer_email": email,
+                            "new_departure_date": new_departure.strftime('%Y-%m-%d'),
+                            "new_return_date": new_return.strftime('%Y-%m-%d') if new_return else None,
+                        },
+                        timeout=10,
+                    )
+                    if response.status_code == 200:
+                        st.success("Booking updated.")
+                        st.session_state[f"show_dash_reschedule_{booking_id}"] = False
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Unable to reschedule booking.")
+                except Exception as exc:
+                    st.error(f"Error updating booking: {exc}")
+        with col_cancel:
+            if st.form_submit_button("Never mind", use_container_width=True):
+                st.session_state[f"show_dash_reschedule_{booking_id}"] = False
+                st.rerun()
+
+
+def render_travel_inspiration(bookings_data):
+    """Render curated travel inspiration cards."""
+    st.markdown("#### 🌍 Curated inspiration")
+
+    top_destinations = bookings_data.get('top_destinations', [])
+    if not top_destinations:
+        top_destinations = [
+            {'destination': 'Riyadh', 'count': 0},
+            {'destination': 'Jeddah', 'count': 0},
+            {'destination': 'AlUla', 'count': 0},
+        ]
+
+    card_backgrounds = {
+        'Riyadh': "linear-gradient(135deg, rgba(30,64,175,0.75), rgba(29,78,216,0.55))",
+        'Jeddah': "linear-gradient(135deg, rgba(5,150,105,0.75), rgba(14,165,233,0.55))",
+        'AlUla': "linear-gradient(135deg, rgba(124,58,237,0.75), rgba(249,115,22,0.55))",
+    }
+
+    st.markdown('<div class="travel-ideas-grid">', unsafe_allow_html=True)
+    for destination in top_destinations[:3]:
+        name = destination['destination']
+        count = destination.get('count', 0)
+        background = card_backgrounds.get(name, "linear-gradient(135deg, rgba(14,116,144,0.75), rgba(37,99,235,0.55))")
+        st.markdown(
+            f"""
+            <div class="travel-idea-card">
+                <div class="travel-idea-card__image" style="background: {background};"></div>
+                <div class="travel-idea-card__body">
+                    <span class="travel-idea-card__tag">Signature experience</span>
+                    <p class="travel-idea-card__title">{name}</p>
+                    <p class="travel-idea-card__meta">Popular with Attar travellers · {count} recent enquiry{'ies' if count != 1 else ''}</p>
+                    <p class="travel-idea-card__meta">Ask Alex for a bespoke stay plan, premium transfers, and curated excursions.</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def show_voice_chat_interface():
@@ -2781,428 +3465,35 @@ def show_voice_chat_interface():
 
 
 def show_dashboard_overview(email):
-    """Show advanced dashboard overview with charts and analytics"""
-    
-    # Modern dashboard header
-    st.markdown("""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    padding: 1rem; border-radius: 8px; margin-bottom: 1rem; 
-                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);">
-            <h1 style="color: white; margin: 0; font-size: 1.8rem; font-weight: 600; text-align: center;">
-                Travel Analytics Dashboard
-            </h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 0.3rem 0 0 0; text-align: center; font-size: 0.9rem;">
-                Comprehensive travel insights and booking analytics
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Get stats and booking data
+    """Render the redesigned dashboard experience."""
+
+    inject_dashboard_styles()
+
     stats = get_dashboard_stats(email)
     bookings_data = get_booking_analytics(email)
-    
-    # Key Metrics Row - Enhanced with icons and trends
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        padding: 0.8rem; border-radius: 8px; text-align: center; 
-                        box-shadow: 0 3px 10px rgba(102, 126, 234, 0.15); margin-bottom: 0.5rem;">
-                <h3 style="color: white; margin: 0; font-size: 0.8rem; opacity: 0.9;">Total Bookings</h3>
-                <h2 style="color: white; margin: 0.3rem 0; font-size: 1.8rem; font-weight: 600;">{stats['total_bookings']}</h2>
-                <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.7rem;">All time bookings</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                        padding: 0.8rem; border-radius: 8px; text-align: center; 
-                        box-shadow: 0 3px 10px rgba(240, 147, 251, 0.15); margin-bottom: 0.5rem;">
-                <h3 style="color: white; margin: 0; font-size: 0.8rem; opacity: 0.9;">Cancelled</h3>
-                <h2 style="color: white; margin: 0.3rem 0; font-size: 1.8rem; font-weight: 600;">{stats['cancelled_bookings']}</h2>
-                <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.7rem;">Cancelled bookings</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); 
-                        padding: 0.8rem; border-radius: 8px; text-align: center; 
-                        box-shadow: 0 3px 10px rgba(79, 172, 254, 0.15); margin-bottom: 0.5rem;">
-                <h3 style="color: white; margin: 0; font-size: 0.8rem; opacity: 0.9;">Total Spent</h3>
-                <h2 style="color: white; margin: 0.3rem 0; font-size: 1.8rem; font-weight: 600;">₹{stats['total_spent']:,.0f}</h2>
-                <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.7rem;">Lifetime spending</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                        padding: 0.8rem; border-radius: 8px; text-align: center; 
-                        box-shadow: 0 3px 10px rgba(250, 112, 154, 0.15); margin-bottom: 0.5rem;">
-                <h3 style="color: white; margin: 0; font-size: 0.8rem; opacity: 0.9;">Upcoming</h3>
-                <h2 style="color: white; margin: 0.3rem 0; font-size: 1.8rem; font-weight: 600;">{stats['upcoming_trips']}</h2>
-                <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.7rem;">Future trips</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # Charts Row
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Booking Status Pie Chart
-        st.markdown("""
-            <div style="background: white; padding: 1rem; border-radius: 8px; 
-                        box-shadow: 0 3px 10px rgba(0,0,0,0.05); margin-bottom: 0.5rem;">
-                <h3 style="color: #333; margin-top: 0; font-size: 1rem; font-weight: 600;">Booking Status Distribution</h3>
-        """, unsafe_allow_html=True)
-        
-        # Create pie chart data
-        status_data = bookings_data.get('status_distribution', {})
-        if status_data and PLOTLY_AVAILABLE:
-            fig_pie = px.pie(
-                values=list(status_data.values()),
-                names=list(status_data.keys()),
-                color_discrete_sequence=['#667eea', '#f093fb', '#4facfe', '#fa709a'],
-                hole=0.4
-            )
-            fig_pie.update_layout(
-                showlegend=True,
-                height=250,
-                font=dict(size=10),
-                margin=dict(l=0, r=0, t=0, b=0)
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-        elif status_data:
-            # Fallback: Show status data as text
-            st.markdown("**Booking Status Distribution:**")
-            for status, count in status_data.items():
-                percentage = (count / sum(status_data.values())) * 100
-                st.markdown(f"• {status.title()}: {count} bookings ({percentage:.1f}%)")
+
+    render_dashboard_hero(stats)
+    render_dashboard_actions()
+
+    overview_tab, analytics_tab, bookings_tab, inspiration_tab = st.tabs(
+        ["Overview", "Analytics", "My Bookings", "Concierge"],
+    )
+
+    with overview_tab:
+        render_overview_summary(stats, bookings_data)
+
+    with analytics_tab:
+        render_analytics_section(stats, bookings_data)
+
+    with bookings_tab:
+        if not email:
+            st.info("Login to manage your bookings.")
         else:
-            st.info("No booking data available for chart")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    with col2:
-        # Monthly Spending Trend
-        st.markdown("""
-            <div style="background: white; padding: 1rem; border-radius: 8px; 
-                        box-shadow: 0 3px 10px rgba(0,0,0,0.05); margin-bottom: 0.5rem;">
-                <h3 style="color: #333; margin-top: 0; font-size: 1rem; font-weight: 600;">Monthly Spending Trend</h3>
-        """, unsafe_allow_html=True)
-        
-        # Create spending trend chart
-        spending_data = bookings_data.get('monthly_spending', [])
-        if spending_data and PLOTLY_AVAILABLE:
-            df_spending = pd.DataFrame(spending_data)
-            fig_line = px.line(
-                df_spending, 
-                x='month', 
-                y='amount',
-                markers=True,
-                color_discrete_sequence=['#667eea']
-            )
-            fig_line.update_layout(
-                height=250,
-                font=dict(size=10),
-                margin=dict(l=0, r=0, t=0, b=0),
-                xaxis_title="Month",
-                yaxis_title="Amount (₹)"
-            )
-            fig_line.update_traces(line=dict(width=3), marker=dict(size=8))
-            st.plotly_chart(fig_line, use_container_width=True)
-        elif spending_data:
-            # Fallback: Show spending data as text
-            st.markdown("**Monthly Spending:**")
-            for month_data in spending_data:
-                st.markdown(f"• {month_data['month']}: ₹{month_data['amount']:,.0f}")
-        else:
-            # Generate sample data for demo
-            if PLOTLY_AVAILABLE:
-                months = pd.date_range(start='2024-01-01', periods=6, freq='M').strftime('%b %Y')
-                amounts = np.random.randint(200, 800, 6).tolist()
-                df_demo = pd.DataFrame({'month': months, 'amount': amounts})
-                
-                fig_line = px.line(
-                    df_demo, 
-                    x='month', 
-                    y='amount',
-                    markers=True,
-                    color_discrete_sequence=['#667eea']
-                )
-                fig_line.update_layout(
-                    height=250,
-                    font=dict(size=10),
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Month",
-                    yaxis_title="Amount (₹)"
-                )
-                fig_line.update_traces(line=dict(width=3), marker=dict(size=8))
-                st.plotly_chart(fig_line, use_container_width=True)
-            else:
-                st.info("No spending data available")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Analytics Summary Row
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Top Destinations
-        st.markdown("""
-            <div style="background: white; padding: 1rem; border-radius: 8px; 
-                        box-shadow: 0 3px 10px rgba(0,0,0,0.05); margin-bottom: 0.5rem;">
-                <h3 style="color: #333; margin-top: 0; font-size: 1rem; font-weight: 600;">Top Destinations</h3>
-        """, unsafe_allow_html=True)
-        
-        destinations = bookings_data.get('top_destinations', [])
-        if destinations:
-            for i, dest in enumerate(destinations[:5], 1):
-                st.markdown(f"""
-                    <div style="display: flex; justify-content: space-between; align-items: center; 
-                                padding: 0.5rem; margin: 0.3rem 0; background: #f8f9ff; 
-                                border-radius: 6px; border-left: 3px solid #667eea;">
-                        <span style="font-weight: 600; color: #333; font-size: 0.9rem;">#{i} {dest['destination']}</span>
-                        <span style="color: #667eea; font-weight: 600; font-size: 0.8rem;">{dest['count']} trips</span>
-                    </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No destination data available")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    with col2:
-        # Travel Insights
-        st.markdown("""
-            <div style="background: white; padding: 1rem; border-radius: 8px; 
-                        box-shadow: 0 3px 10px rgba(0,0,0,0.05); margin-bottom: 0.5rem;">
-                <h3 style="color: #333; margin-top: 0; font-size: 1rem; font-weight: 600;">Travel Insights</h3>
-        """, unsafe_allow_html=True)
-        
-        # Calculate insights
-        avg_booking_value = stats['total_spent'] / max(stats['total_bookings'], 1)
-        success_rate = ((stats['total_bookings'] - stats['cancelled_bookings']) / max(stats['total_bookings'], 1)) * 100
-        
-        insights = [
-            f"Average booking value: ₹{avg_booking_value:.0f}",
-            f"Success rate: {success_rate:.1f}%",
-            f"Bookings this year: {stats['total_bookings']}",
-            f"Favorite service: Travel Package" if stats['total_bookings'] > 0 else "No bookings yet"
-        ]
-        
-        for insight in insights:
-            st.markdown(f"""
-                <div style="padding: 0.5rem; margin: 0.3rem 0; background: #f0f8ff; 
-                            border-radius: 6px; border-left: 3px solid #4facfe;">
-                    <span style="font-size: 0.85rem; color: #333;">{insight}</span>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Recent Activity Timeline
-    st.markdown("""
-        <div style="background: white; padding: 1rem; border-radius: 8px; 
-                    box-shadow: 0 3px 10px rgba(0,0,0,0.05); margin-bottom: 0.5rem;">
-            <h3 style="color: #333; margin-top: 0; font-size: 1rem; font-weight: 600;">Recent Activity</h3>
-    """, unsafe_allow_html=True)
-    
-    recent_bookings = bookings_data.get('recent_bookings', [])
-    if recent_bookings:
-        for booking in recent_bookings[:3]:
-            status_color = "#4caf50" if booking['status'] == 'confirmed' else "#ff9800" if booking['status'] == 'pending' else "#f44336"
-            st.markdown(f"""
-                <div style="display: flex; align-items: center; padding: 0.6rem; margin: 0.3rem 0; 
-                            background: #fafafa; border-radius: 6px; border-left: 3px solid {status_color};">
-                    <div style="flex: 1;">
-                        <strong style="color: #333; font-size: 0.9rem;">{booking['service_type']}</strong><br>
-                        <span style="color: #666; font-size: 0.8rem;">{booking['destination']} • {booking['departure_date']}</span>
-                    </div>
-                    <div style="text-align: right;">
-                        <span style="color: {status_color}; font-weight: 600; text-transform: uppercase; font-size: 0.8rem;">{booking['status']}</span><br>
-                        <span style="color: #667eea; font-weight: 600; font-size: 0.9rem;">₹{booking['amount']}</span>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.info("No recent bookings to display")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # My Bookings Section - Full list with actions
-    st.markdown("""
-        <div style="background: white; padding: 1.5rem; border-radius: 8px; 
-                    box-shadow: 0 3px 10px rgba(0,0,0,0.05); margin-top: 1rem;">
-            <h3 style="color: #333; margin-top: 0; font-size: 1.2rem; font-weight: 600;">📋 My Travel Bookings</h3>
-    """, unsafe_allow_html=True)
-    
-    # Fetch all bookings for this user
-    try:
-        response = requests.get(f"{BACKEND_URL}/my_bookings/{email}", timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            bookings = data.get('bookings', [])
-            
-            if bookings and len(bookings) > 0:
-                st.success(f"Found {len(bookings)} booking(s)")
-                
-                for i, booking in enumerate(bookings, 1):
-                    booking_id = booking['booking_id']
-                    booking_status = booking.get('status', 'pending').lower()
-                    
-                    # Create a nice box for each booking
-                    status_color = 'green' if booking_status == 'confirmed' else 'orange' if booking_status == 'pending' else 'red'
-                    st.markdown(f"""
-                    <div style="background: #fafafa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid {status_color};">
-                        <div style="display: flex; justify-content: space-between; align-items: start;">
-                            <div>
-                                <h4 style="color: #667eea; margin: 0 0 0.5rem 0;">✈️ Booking #{booking['booking_id']}</h4>
-                                <p style="margin: 0.3rem 0; font-size: 0.9rem;"><strong>🎯 Type:</strong> {booking.get('service_type', 'Travel Service')}</p>
-                                <p style="margin: 0.3rem 0; font-size: 0.9rem;"><strong>🌍 Route:</strong> {booking.get('destination', 'N/A')}</p>
-                                <p style="margin: 0.3rem 0; font-size: 0.9rem;"><strong>📅 Date:</strong> {booking.get('departure_date', 'N/A')}</p>
-                                <p style="margin: 0.3rem 0; font-size: 0.9rem;"><strong>👥 Travelers:</strong> {booking.get('num_travelers', 1)}</p>
-                                {f'<p style="margin: 0.3rem 0; font-size: 0.85rem; color: #666;"><strong>📋 Details:</strong> {booking["service_details"][:100]}...</p>' if booking.get('service_details') and len(booking.get('service_details', '')) > 0 else ''}
-                            </div>
-                            <div style="text-align: right;">
-                                <p style="font-size: 1.2rem; color: #667eea; font-weight: 600; margin: 0;">₹{booking.get('total_amount', 0):,.0f}</p>
-                                <p style="margin: 0.3rem 0; font-size: 0.85rem;"><strong>Status:</strong> <span style="color: {status_color}; font-weight: bold;">{booking.get('status', 'pending').upper()}</span></p>
-                                <p style="font-size: 0.75rem; color: #888; margin: 0.3rem 0;">Booked: {booking.get('created_at', 'N/A')[:10]}</p>
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Add action buttons for each booking (only if not cancelled)
-                    if booking_status != 'cancelled':
-                        col1, col2, col3 = st.columns([1, 1, 1])
-                        
-                        with col1:
-                            if st.button(f"🗑️ Cancel", key=f"dash_cancel_{booking_id}", help="Cancel this booking", use_container_width=True):
-                                try:
-                                    response = requests.post(
-                                        f"{BACKEND_URL}/cancel_booking",
-                                        json={"booking_id": booking_id, "customer_email": email},
-                                        timeout=10
-                                    )
-                                    if response.status_code == 200:
-                                        st.success("✅ Booking cancelled successfully!")
-                                        st.balloons()
-                                        time.sleep(1)
-                                        st.rerun()
-                                    else:
-                                        st.error("❌ Failed to cancel booking")
-                                except Exception as e:
-                                    st.error(f"❌ Error: {str(e)}")
-                        
-                        with col2:
-                            if st.button(f"📅 Reschedule", key=f"dash_reschedule_{booking_id}", help="Reschedule this booking", use_container_width=True):
-                                st.session_state[f"show_dash_reschedule_{booking_id}"] = True
-                                st.rerun()
-                        
-                        with col3:
-                            if st.button(f"🗑️ Delete", key=f"dash_delete_{booking_id}", help="Permanently delete this booking", use_container_width=True):
-                                st.session_state[f"show_dash_delete_confirm_{booking_id}"] = True
-                                st.rerun()
-                        
-                        # Show delete confirmation
-                        if st.session_state.get(f"show_dash_delete_confirm_{booking_id}", False):
-                            st.warning("⚠️ Are you sure? This action cannot be undone!")
-                            col_del1, col_del2 = st.columns(2)
-                            with col_del1:
-                                if st.button(f"✅ Yes, Delete", key=f"dash_confirm_delete_{booking_id}", use_container_width=True):
-                                    try:
-                                        response = requests.post(
-                                            f"{BACKEND_URL}/cancel_booking/{booking_id}",
-                                            timeout=10
-                                        )
-                                        if response.status_code == 200:
-                                            st.success("✅ Booking deleted successfully!")
-                                            st.session_state[f"show_dash_delete_confirm_{booking_id}"] = False
-                                            time.sleep(1)
-                                            st.rerun()
-                                        else:
-                                            st.error("❌ Failed to delete booking")
-                                    except Exception as e:
-                                        st.error(f"❌ Error: {str(e)}")
-                            with col_del2:
-                                if st.button(f"❌ Cancel", key=f"dash_cancel_delete_{booking_id}", use_container_width=True):
-                                    st.session_state[f"show_dash_delete_confirm_{booking_id}"] = False
-                                    st.rerun()
-                        
-                        # Show reschedule form if requested
-                        if st.session_state.get(f"show_dash_reschedule_{booking_id}", False):
-                            with st.container():
-                                st.markdown("---")
-                                st.markdown("### 📅 Reschedule Booking")
-                                
-                                with st.form(f"dash_reschedule_form_{booking_id}"):
-                                    try:
-                                        current_dep = datetime.strptime(booking.get('departure_date', '2025-12-15'), '%Y-%m-%d').date()
-                                    except:
-                                        current_dep = datetime.now().date()
-                                    
-                                    new_departure = st.date_input(
-                                        "New Departure Date",
-                                        value=current_dep,
-                                        key=f"dash_new_dep_{booking_id}"
-                                    )
-                                    
-                                    current_ret = None
-                                    if booking.get('return_date'):
-                                        try:
-                                            current_ret = datetime.strptime(booking.get('return_date'), '%Y-%m-%d').date()
-                                        except:
-                                            pass
-                                    
-                                    new_return = st.date_input(
-                                        "New Return Date (if applicable)",
-                                        value=current_ret,
-                                        key=f"dash_new_ret_{booking_id}"
-                                    )
-                                    
-                                    col_form1, col_form2 = st.columns(2)
-                                    
-                                    with col_form1:
-                                        if st.form_submit_button("✅ Confirm Reschedule", use_container_width=True):
-                                            try:
-                                                response = requests.post(
-                                                    f"{BACKEND_URL}/reschedule_booking",
-                                                    json={
-                                                        "booking_id": booking_id,
-                                                        "customer_email": email,
-                                                        "new_departure_date": new_departure.strftime('%Y-%m-%d'),
-                                                        "new_return_date": new_return.strftime('%Y-%m-%d') if new_return else None
-                                                    },
-                                                    timeout=10
-                                                )
-                                                if response.status_code == 200:
-                                                    st.success("✅ Booking rescheduled successfully!")
-                                                    st.session_state[f"show_dash_reschedule_{booking_id}"] = False
-                                                    time.sleep(1)
-                                                    st.rerun()
-                                                else:
-                                                    st.error("❌ Failed to reschedule booking")
-                                            except Exception as e:
-                                                st.error(f"❌ Error: {str(e)}")
-                                    
-                                    with col_form2:
-                                        if st.form_submit_button("❌ Cancel", use_container_width=True):
-                                            st.session_state[f"show_dash_reschedule_{booking_id}"] = False
-                                            st.rerun()
-                    
-                    st.markdown("---")
-            else:
-                st.info("No bookings found. Talk to Alex to make your first booking!")
-        else:
-            st.error(f"Failed to load bookings (Status: {response.status_code})")
-    except Exception as e:
-        st.error(f"Error loading bookings: {e}")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
+            render_booking_cards(email)
+
+    with inspiration_tab:
+        render_travel_inspiration(bookings_data)
+
 
 def main():
     # Check for password reset parameters first
